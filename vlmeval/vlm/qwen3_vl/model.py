@@ -11,18 +11,15 @@ from .prompt import Qwen3VLPromptMixin
 from ...smp import get_gpu_memory, listinstr
 
 
-VLLM_MAX_IMAGE_INPUT_NUM = 24
+VLLM_MAX_IMAGE_INPUT_NUM = 128
 
 
 def is_moe_model(model_path: str) -> bool:
-    """Check if the model is a Mixture of Experts model."""
-    path_parts = model_path.split('/')
-    non_moe_patterns = ['2B','4B','8B','32B']
-    for part in path_parts:
-        if any(pattern in part for pattern in non_moe_patterns):
-            return False
-    return True
-
+    """Check if the model is a MoE model by looking for active-param suffixes like A3B, A17B."""
+    import re
+    if re.search(r'-A\d+B', model_path):
+        return True
+    return False
 
 def ensure_image_url(image: str) -> str:
     prefixes = ['http://', 'https://', 'file://', 'data:image']
@@ -138,11 +135,13 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             self.llm = LLM(
                 model=self.model_path,
                 max_num_seqs=8,
-                limit_mm_per_prompt=limit_mm,
+                # limit_mm_per_prompt=limit_mm,
                 tensor_parallel_size=tp_size,
                 enable_expert_parallel=enable_expert_parallel,
                 seed=0,
-                gpu_memory_utilization=kwargs.get("gpu_utils", 0.9),
+                max_model_len=32768,  
+                enforce_eager=True,
+                gpu_memory_utilization=kwargs.get("gpu_utils", 0.7),
                 trust_remote_code=True,
             )
         else:

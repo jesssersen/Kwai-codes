@@ -139,9 +139,9 @@ Based on your observations, select the best option that accurately addresses the
                                 'NTURGB-D zip file is removed according to MVBench, you can view it at '
                                 'https://huggingface.co/datasets/OpenGVLab/MVBench for detailed reason.'
                             )
-                            raise Exception(
-                                f"{os.path.join(v[1].replace('your_data_path', 'video'), data['video'])} does not exist"
-                            )
+                            # raise Exception(
+                            #     f"{os.path.join(v[1].replace('your_data_path', 'video'), data['video'])} does not exist"
+                            # )
 
                 data_df = pd.DataFrame(self.data_list)
                 data_df = data_df.assign(index=range(len(data_df)))

@@ -3,6 +3,10 @@ import os
 import subprocess
 from functools import partial
 
+os.environ["HUGGINGFACE_HUB_CACHE"] = "/m2v_intern/xuboshen/zgw/hf_cache_temp"
+os.environ["HF_HOME"] = "/m2v_intern/xuboshen/zgw/hf_cache_temp"
+# os.environ["HF_HUB_OFFLINE"] = "1" 
+# os.environ["HF_DATASETS_OFFLINE"] = "1"
 
 # GET the number of GPUs on the node without importing libs like torch
 def get_gpu_list():

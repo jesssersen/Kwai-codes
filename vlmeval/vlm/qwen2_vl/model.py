@@ -14,7 +14,7 @@ from .prompt import Qwen2VLPromptMixin
 from ...smp import get_gpu_memory, listinstr
 from ...dataset import DATASET_MODALITY
 
-VLLM_MAX_IMAGE_INPUT_NUM = 24
+VLLM_MAX_IMAGE_INPUT_NUM = 128
 
 
 def ensure_image_url(image: str) -> str:
@@ -249,6 +249,8 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
         assert self.use_vllm + self.use_lmdeploy <= 1, "You can only set one flag between `use_vllm` and `use_lmdeploy` to True"  # noqa: E501
 
         if self.use_vllm:
+            import os
+            os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
             from vllm import LLM
             gpu_count = torch.cuda.device_count()
             if gpu_count >= 8:
@@ -274,7 +276,9 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
                 max_model_len=32768,
                 limit_mm_per_prompt={"image": self.limit_mm_per_prompt},
                 tensor_parallel_size=tp_size,
-                gpu_memory_utilization=kwargs.get("gpu_utils", 0.9),
+                gpu_memory_utilization=kwargs.get("gpu_utils", 0.7),
+                enforce_eager=True,  # [新增] 必须加上这一行！
+                trust_remote_code=True,
             )
 
         elif self.use_lmdeploy:
@@ -540,21 +544,40 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
         if self.verbose:
             print(f'\033[31m{messages}\033[0m')
 
+        # [修改] 这里的 apply_chat_template 会计算动态 token 数量
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        
+        # [关键修改] 获取 video_kwargs (包含 grid_thw)
         if listinstr(['omni'], self.model_path.lower()):
             audios, images, videos = process_mm_info(messages, use_audio_in_video=self.use_audio_in_video)
+            video_kwargs = None # Omni 处理逻辑可能不同，按原样或参考 Qwen3
         else:
-            images, videos = process_vision_info(messages)
+            # 必须设置 return_video_kwargs=True
+            images, videos, video_kwargs = process_vision_info(
+                messages, 
+                return_video_kwargs=True 
+            )
+        # text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        # if listinstr(['omni'], self.model_path.lower()):
+        #     audios, images, videos = process_mm_info(messages, use_audio_in_video=self.use_audio_in_video)
+        # else:
+        #     images, videos = process_vision_info(messages)
         print('finishing process vision info in vllm.')
 
         if DATASET_MODALITY(dataset) == 'VIDEO' and 'megabench' not in dataset.lower():
             assert len(videos) == 1
             videos_nd = [videos[0].detach().cpu().numpy().transpose(0, 2, 3, 1)]
 
+            # video_inputs = {
+            #     "prompt": text[0],
+            #     "multi_modal_data": {"video": videos_nd[0]},
+            #     "mm_processor_kwargs":{}
+            # }
             video_inputs = {
-                "prompt": text[0],
+                "prompt": text, 
                 "multi_modal_data": {"video": videos_nd[0]},
-                "mm_processor_kwargs":{}
+                # [关键修复] 将捕获到的 video_kwargs 传进去，而不是传空字典 {}
+                "mm_processor_kwargs": video_kwargs if video_kwargs is not None else {}
             }
             if self.use_audio_in_video:
                 import vllm

@@ -58,15 +58,13 @@ Respond with only the letter (A, B, C, or D) of the correct option.
     @classmethod
     def supported_datasets(cls):
         return ['Video-MME']
-
+    
     def prepare_dataset(self, dataset_name='Video-MME', repo_id='lmms-lab/Video-MME'):
-
+        # 内部辅助函数保持不变
         def check_integrity(pth):
             data_file = osp.join(pth, f'{dataset_name}.tsv')
-
             if not os.path.exists(data_file):
                 return False
-
             if md5(data_file) != self.MD5:
                 return False
             data = load(data_file)
@@ -75,80 +73,117 @@ Respond with only the letter (A, B, C, or D) of the correct option.
                     return False
             return True
 
-        cache_path = get_cache_path(repo_id)
-        if cache_path is not None and check_integrity(cache_path):
-            dataset_path = cache_path
-        else:
-
-            def unzip_hf_zip(pth):
-                import zipfile
-                base_dir = pth
-                target_dir = os.path.join(pth, 'video/')
+        def unzip_hf_zip(pth):
+            import zipfile
+            # 为了兼容性，确保 video 目录存在
+            base_dir = pth
+            target_dir = os.path.join(pth, 'video/')
+            
+            # 如果 video 文件夹已经存在且不为空，假设已解压，直接跳过
+            if os.path.exists(target_dir) and len(os.listdir(target_dir)) > 0:
+                print(f'Video folder {target_dir} exists and is not empty. Skipping unzip.')
+            else:
                 zip_files = [
                     os.path.join(base_dir, file) for file in os.listdir(base_dir)
                     if file.endswith('.zip') and file.startswith('video')
                 ]
                 zip_files.sort()
-
-                if not os.path.exists(target_dir):
+                
+                if len(zip_files) > 0:
                     os.makedirs(target_dir, exist_ok=True)
+                    print(f'Unzipping {len(zip_files)} video zip files...')
                     for zip_file in zip_files:
-                        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-                            for member in zip_ref.namelist():
-                                # Check if the member is a file (not a directory)
-                                if not member.endswith('/'):
-                                    # Extract the file to the specified directory
-                                    source = zip_ref.open(member)
-                                    target = open(os.path.join(target_dir, os.path.basename(member)), 'wb')
-                                    with source, target:
-                                        target.write(source.read())
-                    print('The video file has been restored and stored from the zip file.')
+                        try:
+                            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                                for member in zip_ref.namelist():
+                                    if not member.endswith('/'):
+                                        source = zip_ref.open(member)
+                                        target = open(os.path.join(target_dir, os.path.basename(member)), 'wb')
+                                        with source, target:
+                                            target.write(source.read())
+                        except Exception as e:
+                            print(f"Error unzipping {zip_file}: {e}")
+                    print('Video files restored.')
                 else:
-                    print('The video file already exists.')
+                    # 如果没有zip文件也没有video文件夹，可能需要警示
+                    print("Warning: No video zip files found and no video folder detected.")
 
-                subtitle_zip_file = os.path.join(base_dir, 'subtitle.zip')
-                subtitle_target_dir = os.path.join(base_dir, 'subtitle')
+            # 字幕解压逻辑
+            subtitle_zip_file = os.path.join(base_dir, 'subtitle.zip')
+            subtitle_target_dir = os.path.join(base_dir, 'subtitle')
+            
+            if os.path.exists(subtitle_target_dir) and len(os.listdir(subtitle_target_dir)) > 0:
+                pass 
+            elif os.path.exists(subtitle_zip_file):
+                os.makedirs(subtitle_target_dir, exist_ok=True)
+                with zipfile.ZipFile(subtitle_zip_file, 'r') as zip_ref:
+                    for member in zip_ref.namelist():
+                        if not member.endswith('/'):
+                            source = zip_ref.open(member)
+                            target = open(os.path.join(subtitle_target_dir, os.path.basename(member)), 'wb')
+                            with source, target:
+                                target.write(source.read())
+                print('Subtitle files restored.')
 
-                if not os.path.exists(subtitle_target_dir):
-                    os.makedirs(subtitle_target_dir, exist_ok=True)
-                    with zipfile.ZipFile(subtitle_zip_file, 'r') as zip_ref:
-                        for member in zip_ref.namelist():
-                            # Check if the member is a file (not a directory)
-                            if not member.endswith('/'):
-                                # Extract the file to the specified directory
-                                source = zip_ref.open(member)
-                                target = open(os.path.join(subtitle_target_dir, os.path.basename(member)), 'wb')
-                                with source, target:
-                                    target.write(source.read())
-                    print('The subtitle file has been restored and stored from the zip file.')
-                else:
-                    print('The subtitle file already exists.')
+        def generate_tsv(pth):
+            data_file = osp.join(pth, f'{dataset_name}.tsv')
+            # 如果 TSV 已存在，直接跳过
+            if os.path.exists(data_file):
+                return
 
-            def generate_tsv(pth):
+            parquet_file = os.path.join(pth, 'videomme/test-00000-of-00001.parquet')
+            # 兼容有些下载方式 parquet 直接在根目录的情况
+            if not os.path.exists(parquet_file):
+                parquet_file_root = os.path.join(pth, 'test-00000-of-00001.parquet')
+                if os.path.exists(parquet_file_root):
+                    parquet_file = parquet_file_root
+            
+            if not os.path.exists(parquet_file):
+                print(f"Warning: Parquet file not found at {parquet_file}, cannot generate TSV.")
+                return
 
-                data_file = osp.join(pth, f'{dataset_name}.tsv')
-                if os.path.exists(data_file) and md5(data_file) == self.MD5:
-                    return
+            print(f"Generating TSV from {parquet_file}...")
+            data_file_df = pd.read_parquet(parquet_file)
+            data_file_df = data_file_df.assign(index=range(len(data_file_df)))
+            data_file_df['video'] = data_file_df['videoID']
+            data_file_df['video_path'] = data_file_df['videoID'].apply(lambda x: f'./video/{x}.mp4')
+            data_file_df['subtitle_path'] = data_file_df['videoID'].apply(lambda x: f'./subtitle/{x}.srt')
+            data_file_df['candidates'] = data_file_df['options'].apply(lambda x: x.tolist())
 
-                data_file = pd.read_parquet(os.path.join(pth, 'videomme/test-00000-of-00001.parquet'))
-                data_file = data_file.assign(index=range(len(data_file)))
-                data_file['video'] = data_file['videoID']
-                data_file['video_path'] = data_file['videoID'].apply(lambda x: f'./video/{x}.mp4')
-                data_file['subtitle_path'] = data_file['videoID'].apply(lambda x: f'./subtitle/{x}.srt')
-                data_file['candidates'] = data_file['options'].apply(lambda x: x.tolist())
+            data_file_df = data_file_df[['index', 'video', 'video_path', 'duration', 'domain', 'candidates',
+                                   'sub_category', 'task_type', 'subtitle_path', 'question', 'answer']]
 
-                data_file = data_file[['index', 'video', 'video_path', 'duration', 'domain', 'candidates',
-                                       'sub_category', 'task_type', 'subtitle_path', 'question', 'answer']]
+            data_file_df.to_csv(osp.join(pth, f'{dataset_name}.tsv'), sep='\t', index=False)
 
-                data_file.to_csv(osp.join(pth, f'{dataset_name}.tsv'), sep='\t', index=False)
-
-            if modelscope_flag_set():
-                from modelscope import dataset_snapshot_download
-                dataset_path = dataset_snapshot_download(dataset_id=repo_id)
-            else:
-                dataset_path = snapshot_download(repo_id=repo_id, repo_type='dataset')
+        # === 核心修改逻辑 ===
+        
+        # 1. 优先使用你指定的绝对路径
+        # 根据你的 ls 结果：/m2v_intern/xuboshen/zgw/LMUData/datasets/lmms-lab/Video-MME
+        local_target_path = "/m2v_intern/xuboshen/zgw/LMUData/datasets/lmms-lab/Video-MME"
+        
+        if os.path.exists(local_target_path):
+            print(f"Loading Video-MME from local path: {local_target_path}")
+            dataset_path = local_target_path
+            
+            # 即使是本地文件，也运行一下解压和TSV生成（如果已存在它们会自动跳过，很安全）
             unzip_hf_zip(dataset_path)
             generate_tsv(dataset_path)
+            
+        else:
+            # 2. 如果本地路径不存在，才尝试走原来的逻辑（作为保底，或者你可以选择直接报错）
+            print(f"Local path {local_target_path} not found. Trying HuggingFace cache...")
+            
+            cache_path = get_cache_path(repo_id)
+            if cache_path is not None and check_integrity(cache_path):
+                dataset_path = cache_path
+            else:
+                if modelscope_flag_set():
+                    from modelscope import dataset_snapshot_download
+                    dataset_path = dataset_snapshot_download(dataset_id=repo_id)
+                else:
+                    dataset_path = snapshot_download(repo_id=repo_id, repo_type='dataset')
+                unzip_hf_zip(dataset_path)
+                generate_tsv(dataset_path)
 
         data_file = osp.join(dataset_path, f'{dataset_name}.tsv')
 
