@@ -474,6 +474,10 @@ def main():
                         logger.info('Evaluation Results:')
                         if isinstance(eval_results, dict):
                             logger.info('\n' + json.dumps(eval_results, indent=4))
+                            # Persist dict results to a JSON file so visualize_results.py can pick them up
+                            score_json = osp.splitext(result_file)[0] + '_score.json'
+                            with open(score_json, 'w') as _f:
+                                json.dump(eval_results, _f, indent=4)
                         elif isinstance(eval_results, pd.DataFrame):
                             if len(eval_results) < len(eval_results.columns):
                                 eval_results = eval_results.T
