@@ -389,9 +389,14 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
 
         return req
 
-    def generate_batch_vllm(self, messages, dataset=None):
-        """Batch inference for a list of messages. Returns a list of response strings."""
+    def generate_batch_vllm(self, messages, dataset=None, chunk_size=32):
+        """Batch inference for a list of messages. Returns a list of response strings.
+
+        Processes in chunks to avoid building all multimodal inputs in memory at once
+        (1000+ video samples * 16 frames would stall before generation even starts).
+        """
         from vllm import SamplingParams
+        from tqdm import tqdm as _tqdm
         sampling_params = SamplingParams(
             temperature=self.temperature if self.do_sample else 0.0,
             max_tokens=self.max_new_tokens,
@@ -401,29 +406,34 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             presence_penalty=self.presence_penalty,
             stop_token_ids=None,
         )
-        reqs = [self._build_vllm_request(msg, dataset=dataset) for msg in messages]
-        outputs = self.llm.generate(reqs, sampling_params=sampling_params, use_tqdm=True)
         results = []
-        for o in outputs:
-            generated_text = o.outputs[0].text
-            if self.post_process:
-                resp = generated_text.split('\\boxed{')[-1]
-                lt = len(resp)
-                counter, end = 1, None
-                for i in range(lt):
-                    if resp[i] == '{':
-                        counter += 1
-                    elif resp[i] == '}':
-                        counter -= 1
-                    if counter == 0:
-                        end = i
-                        break
-                    elif i == lt - 1:
-                        end = lt
-                        break
-                if end is not None:
-                    generated_text = resp[:end]
-            results.append(generated_text)
+        total_chunks = (len(messages) + chunk_size - 1) // chunk_size
+        for chunk_start in _tqdm(range(0, len(messages), chunk_size),
+                                 total=total_chunks,
+                                 desc='vLLM batch generate (chunks)'):
+            chunk = messages[chunk_start: chunk_start + chunk_size]
+            reqs = [self._build_vllm_request(msg, dataset=dataset) for msg in chunk]
+            outputs = self.llm.generate(reqs, sampling_params=sampling_params, use_tqdm=False)
+            for o in outputs:
+                generated_text = o.outputs[0].text
+                if self.post_process:
+                    resp = generated_text.split('\\boxed{')[-1]
+                    lt = len(resp)
+                    counter, end = 1, None
+                    for i in range(lt):
+                        if resp[i] == '{':
+                            counter += 1
+                        elif resp[i] == '}':
+                            counter -= 1
+                        if counter == 0:
+                            end = i
+                            break
+                        elif i == lt - 1:
+                            end = lt
+                            break
+                    if end is not None:
+                        generated_text = resp[:end]
+                results.append(generated_text)
         return results
 
     def generate_inner_vllm(self, message, dataset=None):
