@@ -184,7 +184,7 @@ class AoTBench(VideoBaseDataset):
         for _, row in data.iterrows():
             pred = str(row.get('prediction', '')).strip()
             ans = str(row.get('answer', '')).strip().upper()
-            if not ans:
+            if not ans or not pred:
                 continue
             m = re.search(r'[A-Za-z]', pred)
             pred_letter = m.group(0).upper() if m else ''

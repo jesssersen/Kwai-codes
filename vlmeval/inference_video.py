@@ -81,6 +81,7 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     res = load(out_file) if osp.exists(out_file) else {}
     rank, world_size = get_rank_and_world_size()
     dataset_name = dataset.dataset_name
+    skip_err = os.environ.get('SKIP_ERR', '0') == '1'
 
     sample_indices = list(dataset.videos) if getattr(dataset, 'pack', False) else list(dataset.data['index'])
     samples = list(dataset.videos) if getattr(dataset, 'pack', False) else list(range(len(dataset.data)))
@@ -206,16 +207,28 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
                 print(f'using {model_name} default setting for video, dataset.fps is ommitted')
         if 'SUB_DATASET' in dataset.data.iloc[sample_map[idx]]:
             dataset_name = dataset.data.iloc[sample_map[idx]]['SUB_DATASET']
-        if hasattr(model, 'use_custom_prompt') and model.use_custom_prompt(dataset_name):
-            if dataset.nframe == 0:
-                raise ValueError(f'nframe must be set for custom prompt, fps is not suitable for {model_name}')
-            struct = model.build_prompt(
-                dataset.data.iloc[sample_map[idx]], dataset=dataset, video_llm=getattr(model, 'VIDEO_LLM', False)
+        try:
+            if hasattr(model, 'use_custom_prompt') and model.use_custom_prompt(dataset_name):
+                if dataset.nframe == 0:
+                    raise ValueError(f'nframe must be set for custom prompt, fps is not suitable for {model_name}')
+                struct = model.build_prompt(
+                    dataset.data.iloc[sample_map[idx]], dataset=dataset, video_llm=getattr(model, 'VIDEO_LLM', False)
+                )
+            else:
+                struct = dataset.build_prompt(
+                    sample_map[idx], video_llm=getattr(model, 'VIDEO_LLM', False)
+                )
+        except Exception as err:
+            if not skip_err:
+                raise
+            logging.warning(
+                f'Skip sample {idx} in {model_name}/{dataset_name} during prompt build: '
+                f'{type(err).__name__}: {err}'
             )
-        else:
-            struct = dataset.build_prompt(
-                sample_map[idx], video_llm=getattr(model, 'VIDEO_LLM', False)
-            )
+            res[idx] = ''
+            if (i + 1) % 20 == 0:
+                dump(res, out_file)
+            continue
         if struct is None:
             continue
 
@@ -227,18 +240,25 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
                 print(f"  type={msg.get('type','?')}  value={str(msg.get('value',''))[:200]}")
             print('=' * 60 + '\n', flush=True)
 
-        # If `SKIP_ERR` flag is set, the model will skip the generation if error is encountered
-        if os.environ.get('SKIP_ERR', False) == '1':
-            FAIL_MSG = 'Failed to obtain answer'
-            try:
-                response = model.generate(message=struct, dataset=dataset_name)
-            except RuntimeError as err:
-                torch.cuda.synchronize()
-                warnings.error(f'{type(err)} {str(err)}')
-                response = f'{FAIL_MSG}: {type(err)} {str(err)}'
-        else:
+        # If `SKIP_ERR` flag is set, bad video samples are dropped instead of aborting the whole run.
+        try:
             response = model.generate(message=struct, dataset=dataset_name)
-        torch.cuda.empty_cache()
+        except Exception as err:
+            if not skip_err:
+                raise
+            if torch.cuda.is_available():
+                try:
+                    torch.cuda.synchronize()
+                except Exception:
+                    pass
+            logging.warning(
+                f'Skip sample {idx} in {model_name}/{dataset_name} during generation: '
+                f'{type(err).__name__}: {err}'
+            )
+            response = ''
+        finally:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         if verbose:
             print(response, flush=True)

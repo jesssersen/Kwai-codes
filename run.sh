@@ -1,25 +1,36 @@
 
-# 彻底禁用 Torch 动态编译
+#!/bin/bash
+set -euo pipefail
+set -x
+
+# Disable torch compile to avoid startup overhead.
 export TORCH_COMPILE_DISABLE=1
-# 增加系统库搜索路径（解决 -lcuda 找不到的问题）
-export LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LIBRARY_PATH
-export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-# 1. 清除 Conda 可能设置的编译器变量
+
+# Resolve libcuda lookup issues on some nodes.
+export LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LIBRARY_PATH:-}
+export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
+
+# Force system toolchain for extension builds.
 unset CC
 unset CXX
-
-# 2. 强制指定使用系统的 GCC/G++
 export CC=/usr/bin/gcc
 export CXX=/usr/bin/g++
 
-WORK_DIR="/m2v_intern/xuboshen/zgw/eval"
-# export VLLM_ENFORCE_EAGER=1
-# export VLLM_WORKER_MULTIPROC_METHOD=spawn
-# python run.py --data TempCompass_64frame --model Qwen3-VL-8B-Instruct --use-vllm
-# python run.py --data Video-MME_64frame --model Qwen3-VL-4B-Instruct-Intruder-800-lr1e-6-beta004 --use-vllm
-# python run.py --data Video-MME_64frame --model Qwen3-VL-8B-Instruct-reordertask-distactor --use-vllm
-python run.py --data MVBench_MP4_1fps --model Qwen3-VL-4B-Instruct-mixed --use-vllm --work-dir $WORK_DIR
-# python run.py --data AoTBench_ReverseFilm_16frame AoTBench_UCF101_16frame AoTBench_Rtime_t2v_16frame AoTBench_Rtime_v2t_16frame AoTBench_QA_16frame --model Qwen3-VL-8B-Instruct --use-vllm --work-dir $WORK_DIR
-# python run.py --data FutureOmni_32frame --model Qwen3-VL-8B-Instruct --use-vllm --work-dir $WORK_DIR
-# python run.py --data TempCompass_64frame --model Qwen3-VL-8B-Instruct-NarrativeReorder-with-clues --use-vllm --work-dir /m2v_intern/xuboshen/zgw/eval
-# python run.py --data TempCompass_64frame --model Qwen3-VL-8B-Instruct-NarrativeReorder-wo-clues --use-vllm --work-dir /m2v_intern/xuboshen/zgw/eval
+# Keep tokenizer threads from oversubscribing CPU when using torchrun.
+export TOKENIZERS_PARALLELISM=false
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
+export SKIP_ERR="${SKIP_ERR:-1}"
+
+WORK_DIR="${WORK_DIR:-/m2v_intern/xuboshen/zgw/eval}"
+CONFIG_PATH="$(dirname "$0")/configs/qwen3_vl_4b_aot_fast.json"
+NPROC_PER_NODE="${NPROC_PER_NODE:-$(nvidia-smi --list-gpus | wc -l | tr -d ' ')}"
+
+# Fast AoT path for Qwen3-VL-4B:
+# 1. torchrun for sample-level parallelism across GPUs
+# 2. transformers backend instead of vLLM TP
+# 3. short decoding budget for MCQ ("option letter only")
+torchrun --nproc-per-node="${NPROC_PER_NODE}" \
+  run.py \
+  --config "${CONFIG_PATH}" \
+  --work-dir "${WORK_DIR}" \
+  --reuse
