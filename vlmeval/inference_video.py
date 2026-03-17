@@ -213,6 +213,14 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         if struct is None:
             continue
 
+        # Print the first batch prompt for sanity check
+        if i == 0 and rank == 0:
+            print('\n' + '=' * 60)
+            print('[DEBUG] First sample prompt (rank 0):')
+            for msg in struct:
+                print(f"  type={msg.get('type','?')}  value={str(msg.get('value',''))[:200]}")
+            print('=' * 60 + '\n', flush=True)
+
         # If `SKIP_ERR` flag is set, the model will skip the generation if error is encountered
         if os.environ.get('SKIP_ERR', False) == '1':
             FAIL_MSG = 'Failed to obtain answer'

@@ -66,6 +66,8 @@ from .EgoExoBench.egoexobench import EgoExoBench_MCQ
 from .videott import VideoTT
 
 from .worldsense import WorldSense
+from .aotbench import AoTBench
+from .futureomni import FutureOmni
 from .qbench_video import QBench_Video, QBench_Video_MCQ, QBench_Video_VQA
 
 from .cmmmu import CMMMU

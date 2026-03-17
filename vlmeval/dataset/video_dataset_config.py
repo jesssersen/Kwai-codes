@@ -208,12 +208,34 @@ dream_1k_dataset = {
 
 supported_video_datasets = {}
 
+aotbench_dataset = {
+    'AoTBench_ReverseFilm_16frame': partial(AoTBench, dataset='AoTBench_ReverseFilm', nframe=16),
+    'AoTBench_UCF101_16frame': partial(AoTBench, dataset='AoTBench_UCF101', nframe=16),
+    'AoTBench_Rtime_t2v_16frame': partial(AoTBench, dataset='AoTBench_Rtime_t2v', nframe=16),
+    'AoTBench_Rtime_v2t_16frame': partial(AoTBench, dataset='AoTBench_Rtime_v2t', nframe=16),
+    'AoTBench_QA_16frame': partial(AoTBench, dataset='AoTBench_QA', nframe=16),
+    'AoTBench_ReverseFilm_32frame': partial(AoTBench, dataset='AoTBench_ReverseFilm', nframe=32),
+    'AoTBench_UCF101_32frame': partial(AoTBench, dataset='AoTBench_UCF101', nframe=32),
+    'AoTBench_Rtime_t2v_32frame': partial(AoTBench, dataset='AoTBench_Rtime_t2v', nframe=32),
+    'AoTBench_Rtime_v2t_32frame': partial(AoTBench, dataset='AoTBench_Rtime_v2t', nframe=32),
+    'AoTBench_QA_32frame': partial(AoTBench, dataset='AoTBench_QA', nframe=32),
+}
+
+futureomni_dataset = {
+    'FutureOmni_32frame': partial(FutureOmni, dataset='FutureOmni', nframe=32),
+    'FutureOmni_64frame': partial(FutureOmni, dataset='FutureOmni', nframe=64),
+    'FutureOmni_128frame': partial(FutureOmni, dataset='FutureOmni', nframe=128),
+    'FutureOmni_256frame': partial(FutureOmni, dataset='FutureOmni', nframe=256),
+    'FutureOmni_1fps': partial(FutureOmni, dataset='FutureOmni', fps=1.0),
+    'FutureOmni_2fps': partial(FutureOmni, dataset='FutureOmni', fps=2.0),
+}
+
 dataset_groups = [
     mmbench_video_dataset, mvbench_dataset, videomme_dataset, videommmu_dataset, longvideobench_dataset,
     mlvu_dataset, tempcompass_dataset, cgbench_dataset, worldsense_dataset, tamperbench_dataset,
     megabench_dataset, qbench_video_dataset, moviechat1k_dataset, vdc_dataset, video_holmes_dataset, vcrbench_dataset,
     cg_av_counting_dataset, video_mmlu_dataset, egoexobench_dataset, dream_1k_dataset, video_tt_dataset,
-    vsibench_dataset
+    vsibench_dataset, aotbench_dataset, futureomni_dataset
 ]
 
 for grp in dataset_groups:
