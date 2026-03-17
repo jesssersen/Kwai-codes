@@ -494,6 +494,17 @@ def main():
                             os.remove(link_addr)
                         os.symlink(file_addr, link_addr)
 
+                    # Bench-centric symlinks: work_dir/{dataset_name}/{model_name_dataset_name.*}
+                    bench_root = osp.join(args.work_dir, dataset_name)
+                    os.makedirs(bench_root, exist_ok=True)
+                    for f in files:
+                        cwd = os.getcwd()
+                        file_addr = osp.join(cwd, pred_root, f)
+                        link_addr = osp.join(cwd, bench_root, f)
+                        if osp.exists(link_addr) or osp.islink(link_addr):
+                            os.remove(link_addr)
+                        os.symlink(file_addr, link_addr)
+
             except Exception as e:
                 logger.exception(f'Model {model_name} x Dataset {dataset_name} combination failed: {e}, '
                                  'skipping this combination.')
