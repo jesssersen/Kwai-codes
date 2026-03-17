@@ -178,24 +178,50 @@ class AoTBench(VideoBaseDataset):
     @classmethod
     def evaluate(cls, eval_file, **judge_kwargs):
         data = load(eval_file)
-        correct = 0
-        total = 0
+        score_file = get_intermediate_file_path(eval_file, '_score')
 
+        if not osp.exists(score_file):
+            for idx, row in data.iterrows():
+                pred = str(row.get('prediction', '')).strip()
+                ans = str(row.get('answer', '')).strip().upper()
+                if not ans or not pred:
+                    data.loc[idx, 'score'] = -1
+                    continue
+                m = re.search(r'[A-Za-z]', pred)
+                pred_letter = m.group(0).upper() if m else ''
+                data.loc[idx, 'score'] = int(pred_letter == ans)
+            dump(data, score_file)
+        else:
+            data = load(score_file)
+
+        # Build result DataFrame: per-subset + overall
+        result_board = {}
         for _, row in data.iterrows():
-            pred = str(row.get('prediction', '')).strip()
-            ans = str(row.get('answer', '')).strip().upper()
-            if not ans or not pred:
-                continue
-            m = re.search(r'[A-Za-z]', pred)
-            pred_letter = m.group(0).upper() if m else ''
-            correct += int(pred_letter == ans)
-            total += 1
+            # Use dataset_name suffix as category (e.g. ReverseFilm, UCF101)
+            category = str(row.get('category', 'overall')) if 'category' in data.columns else 'overall'
+            if category not in result_board:
+                result_board[category] = [0, 0]
+            result_board[category][1] += 1
+            if row.get('score', -1) == 1:
+                result_board[category][0] += 1
 
-        acc = correct / total if total > 0 else 0.0
-        result = {
-            'accuracy': round(acc * 100, 2),
-            'correct': correct,
-            'total': total,
-        }
-        print(f'AoTBench Accuracy: {correct}/{total} = {acc:.2%}')
-        return result
+        correct = sum(v[0] for v in result_board.values())
+        total = sum(v[1] for v in result_board.values())
+        result_board['overall'] = [correct, total]
+
+        rows = []
+        for key in sorted(result_board.keys()):
+            c, t = result_board[key]
+            rows.append({
+                'category': key,
+                'success': c,
+                'overall': t,
+                'accuracy': round(c / t * 100, 2) if t > 0 else 0.0,
+            })
+        result_df = pd.DataFrame(rows)
+
+        acc_file = get_intermediate_file_path(eval_file, '_acc', 'csv')
+        dump(result_df, acc_file)
+
+        print(f'AoTBench Accuracy: {correct}/{total} = {correct / total:.2%}' if total > 0 else 'AoTBench: no samples')
+        return result_df

@@ -122,40 +122,52 @@ class FutureOmni(VideoBaseDataset):
     @classmethod
     def evaluate(cls, eval_file, **judge_kwargs):
         data = load(eval_file)
+        score_file = get_intermediate_file_path(eval_file, '_score')
 
-        # Per-source breakdown
-        source_stats: dict = {}
-        correct = 0
-        total = 0
+        if not osp.exists(score_file):
+            for idx, row in data.iterrows():
+                pred = str(row.get('prediction', '')).strip()
+                ans = str(row.get('answer', '')).strip().upper()
+                if not ans:
+                    data.loc[idx, 'score'] = -1
+                    continue
+                m = re.search(r'[A-Fa-f]', pred)
+                pred_letter = m.group(0).upper() if m else ''
+                data.loc[idx, 'score'] = int(pred_letter == ans)
+            dump(data, score_file)
+        else:
+            data = load(score_file)
 
+        # Build result DataFrame: per-source + overall
+        result_board = {}
         for _, row in data.iterrows():
-            pred = str(row.get('prediction', '')).strip()
-            ans = str(row.get('answer', '')).strip().upper()
-            if not ans:
-                continue
-
-            m = re.search(r'[A-Fa-f]', pred)
-            pred_letter = m.group(0).upper() if m else ''
-            hit = int(pred_letter == ans)
-
             src = str(row.get('source', 'all'))
-            if src not in source_stats:
-                source_stats[src] = {'correct': 0, 'total': 0}
-            source_stats[src]['correct'] += hit
-            source_stats[src]['total'] += 1
+            if src not in result_board:
+                result_board[src] = [0, 0]
+            result_board[src][1] += 1
+            if row.get('score', -1) == 1:
+                result_board[src][0] += 1
 
-            correct += hit
-            total += 1
+        correct = sum(v[0] for v in result_board.values())
+        total = sum(v[1] for v in result_board.values())
+        result_board['overall'] = [correct, total]
 
-        acc = correct / total if total > 0 else 0.0
-        result = {'accuracy': round(acc * 100, 2), 'correct': correct, 'total': total}
+        rows = []
+        for key in sorted(result_board.keys()):
+            c, t = result_board[key]
+            rows.append({
+                'category': key,
+                'success': c,
+                'overall': t,
+                'accuracy': round(c / t * 100, 2) if t > 0 else 0.0,
+            })
+        result_df = pd.DataFrame(rows)
 
-        for src, stats in sorted(source_stats.items()):
-            src_acc = stats['correct'] / stats['total'] if stats['total'] > 0 else 0.0
-            result[f'accuracy_{src}'] = round(src_acc * 100, 2)
+        acc_file = get_intermediate_file_path(eval_file, '_acc', 'csv')
+        dump(result_df, acc_file)
 
-        print(f'FutureOmni Accuracy: {correct}/{total} = {acc:.2%}')
-        for src, stats in sorted(source_stats.items()):
-            print(f'  [{src}] {stats["correct"]}/{stats["total"]}')
-
-        return result
+        print(f'FutureOmni Accuracy: {correct}/{total} = {correct / total:.2%}' if total > 0 else 'FutureOmni: no samples')
+        for _, r in result_df.iterrows():
+            if r['category'] != 'overall':
+                print(f'  [{r["category"]}] {r["success"]}/{r["overall"]}')
+        return result_df

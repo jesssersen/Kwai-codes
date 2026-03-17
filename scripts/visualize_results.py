@@ -64,7 +64,15 @@ def _extract_score_from_csv(df) -> float | None:
     import pandas as pd
     if df is None or df.empty:
         return None
-    # Look for accuracy/score columns
+    # Standard VLMEvalKit format: rows with 'category' column, one row is 'overall'
+    if 'category' in df.columns and 'accuracy' in df.columns:
+        overall = df[df['category'] == 'overall']
+        if not overall.empty:
+            try:
+                return float(overall.iloc[0]['accuracy'])
+            except (ValueError, TypeError):
+                pass
+    # Fallback: look for accuracy/score columns, take last row
     for col in df.columns:
         if col.lower() in ('accuracy', 'acc', 'score', 'overall', 'success'):
             vals = df[col].dropna()
