@@ -366,12 +366,15 @@ def main():
                     judge_kwargs['model'] = args.judge
                 else:
                     print(dataset_name)
-                    if dataset.TYPE in ['MCQ', 'Y/N', 'MCQ_MMMU_Pro'] or listinstr(
+                    # MCQ datasets that need only exact matching (no API judge)
+                    if listinstr(['MVBench', 'LongVideoBench'], dataset_name):
+                        judge_kwargs['model'] = 'exact_matching'
+                    elif dataset.TYPE in ['MCQ', 'Y/N', 'MCQ_MMMU_Pro', 'Video-MCQ'] or listinstr(
                         ['moviechat1k', 'mme-reasoning'], dataset_name.lower()
                     ):
                         if listinstr(['WeMath', 'MME-Reasoning'], dataset_name):
                             judge_kwargs['model'] = 'gpt-4o-mini'
-                        elif listinstr(['VisuLogic', 'MVBench', 'LongVideoBench'], dataset_name):
+                        elif listinstr(['VisuLogic'], dataset_name):
                             judge_kwargs['model'] = 'exact_matching'
                         else:
                             judge_kwargs['model'] = 'chatgpt-0125'
