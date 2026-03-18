@@ -389,7 +389,7 @@ def plot_radar(
     angles_deg = np.linspace(0, 360, num_vars, endpoint=False).tolist()
 
     # --- main polar figure ---
-    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(polar=True))
+    fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(polar=True))
 
     use_fill = len(complete_models) <= 6
 
@@ -410,14 +410,13 @@ def plot_radar(
     ax.set_yticks([20, 40, 60, 80, 100])
     ax.set_yticklabels([''] * 5)
 
-    ax.tick_params(pad=20)
+    ax.tick_params(pad=30)
     ax.set_xticks(angles)
     ax.set_xticklabels(benchmarks, fontsize=10)
 
     # --- delta annotations (2-model comparison only) ---
     if len(complete_models) == 2:
         m0, m1 = complete_models[0], complete_models[1]
-        import math
         for i, bench in enumerate(benchmarks):
             if m0 not in results[bench] or m1 not in results[bench]:
                 continue
@@ -430,17 +429,14 @@ def plot_radar(
             bg_color   = '#d6f5dc' if is_up else '#fde8e8'
             symbol     = '▲' if is_up else '▼'
             label      = f'{symbol}{abs(delta):.1f}'
-            # Alignment based on which quadrant the axis is in
-            cos_a = math.cos(angle)
-            sin_a = math.sin(angle)
-            ha = 'center' if abs(cos_a) < 0.35 else ('left' if cos_a > 0 else 'right')
-            va = 'center' if abs(sin_a) < 0.35 else ('bottom' if sin_a > 0 else 'top')
-            # Place just beyond the outer ring; tick labels sit at ~r=107, so r=120 clears them
-            ax.text(angle, 120, label,
-                    ha=ha, va=va,
-                    color=text_color, fontsize=10, fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=0.25', fc=bg_color,
-                              ec=text_color, lw=1.2, alpha=0.9))
+            # Place badge INSIDE the outer ring so it never collides with
+            # the benchmark name labels that sit outside it.
+            ax.text(angle, 92, label,
+                    ha='center', va='center',
+                    color=text_color, fontsize=9, fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.3', fc=bg_color,
+                              ec=text_color, lw=1.2, alpha=0.92),
+                    zorder=5)
 
     # Legend
     leg = ax.legend(loc='center right', bbox_to_anchor=(1.45, 0.5),
