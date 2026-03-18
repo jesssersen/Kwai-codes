@@ -195,6 +195,51 @@ COLORS = [
 ]
 
 
+def _normalize_per_axis(
+    results: dict[str, dict[str, float]],
+    benchmarks: list[str],
+    models: list[str],
+    padding_frac: float = 0.25,
+    min_padding: float = 0.5,
+) -> tuple[np.ndarray, dict[str, tuple[float, float]]]:
+    """Per-axis normalization: map each benchmark's scores to [0, 100] independently.
+
+    Returns (normalized, axis_ranges) where:
+      - normalized: shape (num_models, num_benchmarks), values in [0, 100]
+      - axis_ranges: {benchmark: (display_min, display_max)} in original score space
+    """
+    num_m, num_b = len(models), len(benchmarks)
+    raw = np.full((num_m, num_b), np.nan)
+    for bi, bench in enumerate(benchmarks):
+        for mi, model in enumerate(models):
+            if model in results[bench]:
+                raw[mi, bi] = results[bench][model]
+
+    normalized = np.full_like(raw, np.nan)
+    axis_ranges: dict[str, tuple[float, float]] = {}
+
+    for bi, bench in enumerate(benchmarks):
+        col = raw[:, bi]
+        valid = col[~np.isnan(col)]
+        if len(valid) == 0:
+            axis_ranges[bench] = (0.0, 100.0)
+            continue
+        lo, hi = float(valid.min()), float(valid.max())
+        spread = hi - lo
+        pad = max(min_padding, spread * padding_frac)
+        axis_min = max(0.0, lo - pad)
+        axis_max = min(100.0, hi + pad)
+        rng = axis_max - axis_min
+        if rng == 0:
+            rng = 1.0
+        axis_ranges[bench] = (axis_min, axis_max)
+        for mi in range(num_m):
+            if not np.isnan(raw[mi, bi]):
+                normalized[mi, bi] = (raw[mi, bi] - axis_min) / rng * 100
+
+    return normalized, axis_ranges
+
+
 def plot_benchmark(bench: str, model_scores: dict[str, float], out_path: str):
     """Save a grouped bar chart for one benchmark."""
     models = sorted(model_scores.keys())
@@ -274,6 +319,117 @@ def plot_overview(results: dict[str, dict[str, float]], out_path: str):
     print(f'  saved → {out_path}')
 
 
+def plot_radar(
+    results: dict[str, dict[str, float]],
+    out_path: str,
+    padding_frac: float = 0.25,
+    min_padding: float = 0.5,
+):
+    """Radar (spider) chart with per-axis zoom to amplify small differences.
+
+    Each benchmark axis is independently scaled so that even 0.5 pp gaps
+    become clearly visible.  Actual score values are shown via overlay axes.
+    """
+    all_models = sorted({m for scores in results.values() for m in scores})
+    benchmarks = sorted(results.keys())
+    num_vars = len(benchmarks)
+
+    if num_vars < 3 or len(all_models) == 0:
+        return
+
+    # Keep only models that have scores for ALL benchmarks
+    complete_models = [m for m in all_models
+                       if all(m in results[b] for b in benchmarks)]
+    if len(complete_models) < 2:
+        # Fallback: use all models even if incomplete
+        complete_models = all_models
+    if len(complete_models) == 0:
+        return
+
+    skipped = set(all_models) - set(complete_models)
+    if skipped:
+        print(f'  radar: skipping models with missing benchmarks: {skipped}')
+
+    normalized, axis_ranges = _normalize_per_axis(
+        results, benchmarks, complete_models, padding_frac, min_padding)
+
+    # --- angles ---
+    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+    angles_deg = np.linspace(0, 360, num_vars, endpoint=False).tolist()
+
+    # --- main polar figure ---
+    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(polar=True))
+
+    use_fill = len(complete_models) <= 6
+
+    for mi, model in enumerate(complete_models):
+        vals = normalized[mi]
+        if np.all(np.isnan(vals)):
+            continue
+        # Close the polygon
+        loop_vals = np.append(vals, vals[0])
+        loop_angles = angles + [angles[0]]
+        color = COLORS[mi % len(COLORS)]
+        ax.plot(loop_angles, loop_vals, color=color, linewidth=1.5,
+                linestyle='solid', label=model)
+        if use_fill:
+            ax.fill(loop_angles, loop_vals, color=color, alpha=0.15)
+
+    ax.set_ylim(0, 100)
+    ax.set_yticks([20, 40, 60, 80, 100])
+    ax.set_yticklabels([''] * 5)
+
+    ax.tick_params(pad=20)
+    ax.set_xticks(angles)
+    ax.set_xticklabels(benchmarks, fontsize=10)
+
+    # Legend
+    leg = ax.legend(loc='center right', bbox_to_anchor=(1.45, 0.5),
+                    fontsize=9, framealpha=0.8, ncol=1, labelspacing=1.0)
+    for line in leg.get_lines():
+        line.set_linewidth(2.5)
+
+    # --- overlay axes for per-axis tick labels ---
+    # Dynamically compute center & size from the main axes position
+    bbox = ax.get_position()
+    cx = bbox.x0 + bbox.width / 2
+    cy = bbox.y0 + bbox.height / 2
+    sz = bbox.width / 2
+
+    for i in range(num_vars):
+        oa = fig.add_axes(
+            [cx - sz, cy - sz, sz * 2, sz * 2],
+            projection='polar', label=f'overlay_{i}',
+        )
+        oa.patch.set_visible(False)
+        oa.grid(False)
+        oa.xaxis.set_visible(False)
+
+        axis_min, axis_max = axis_ranges[benchmarks[i]]
+        rng = axis_max - axis_min if axis_max != axis_min else 1.0
+        # 4 evenly-spaced tick values in original score space (skip endpoints)
+        tick_actual = [axis_min + rng / 5 * k for k in range(2, 6)]
+        tick_norm = [(v - axis_min) / rng * 100 for v in tick_actual]
+        tick_labels = [f'{v:.1f}' for v in tick_actual]
+
+        oa.set_rgrids(tick_norm, angle=angles_deg[i],
+                      labels=tick_labels, fontsize=8)
+        oa.spines['polar'].set_visible(False)
+        oa.set_ylim(0, 100)
+
+    # Title & subtitle
+    ax.set_title('Model Comparison (per-axis zoom)',
+                 fontsize=14, fontweight='bold', pad=30, y=1.08)
+    fig.text(0.5, 0.02,
+             'Note: Each axis is independently scaled to amplify differences. '
+             'Tick labels show actual scores.',
+             ha='center', fontsize=8, fontstyle='italic', color='#666666')
+
+    fig.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f'  saved → {out_path}')
+
+
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
@@ -311,6 +467,10 @@ def main():
         print(f'[{bench}]  {len(model_scores)} model(s): '
               + ', '.join(f'{m}={v:.1f}' for m, v in sorted(model_scores.items())))
         plot_benchmark(bench, model_scores, out_path)
+
+    # Radar chart (needs >= 3 benchmarks for meaningful spider plot)
+    if len(results) >= 3:
+        plot_radar(results, osp.join(out_dir, '_radar.png'))
 
     # Overview plot (all benchmarks × all models)
     if len(results) > 1:
