@@ -163,7 +163,7 @@ def scan_work_dir(work_dir: str) -> dict[str, dict[str, float]]:
                 # Match: ModelName_DatasetName_acc.csv / _score.csv / _result.json
                 # or:    ModelName_DatasetName.json  (some datasets dump bare json)
                 m = re.match(
-                    rf'^{re.escape(model_name)}_(.+?)(?:_acc|_score|_eval|_result)?\.(?:csv|json)$',
+                    rf'^{re.escape(model_name)}_(.+?)(?:_acc|_score|_eval|_result|_rating)?\.(?:csv|json)$',
                     fname,
                 )
                 if not m:
