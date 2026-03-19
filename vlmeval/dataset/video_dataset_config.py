@@ -230,12 +230,32 @@ futureomni_dataset = {
     'FutureOmni_2fps': partial(FutureOmni, dataset='FutureOmni', fps=2.0),
 }
 
+charades_sta_dataset = {
+    'CharadesSTA_16frame': partial(CharadesSTA, dataset='CharadesSTA', nframe=16),
+    'CharadesSTA_32frame': partial(CharadesSTA, dataset='CharadesSTA', nframe=32),
+    'CharadesSTA_64frame': partial(CharadesSTA, dataset='CharadesSTA', nframe=64),
+    'CharadesSTA_1fps': partial(CharadesSTA, dataset='CharadesSTA', fps=1.0),
+    'CharadesSTA_2fps': partial(CharadesSTA, dataset='CharadesSTA', fps=2.0),
+}
+
+perceptiontest_dataset = {
+    'PerceptionTest_val_8frame': partial(PerceptionTest, dataset='PerceptionTest_val', nframe=8),
+    'PerceptionTest_val_16frame': partial(PerceptionTest, dataset='PerceptionTest_val', nframe=16),
+    'PerceptionTest_val_32frame': partial(PerceptionTest, dataset='PerceptionTest_val', nframe=32),
+    'PerceptionTest_val_1fps': partial(PerceptionTest, dataset='PerceptionTest_val', fps=1.0),
+    'PerceptionTest_test_8frame': partial(PerceptionTest, dataset='PerceptionTest_test', nframe=8),
+    'PerceptionTest_test_16frame': partial(PerceptionTest, dataset='PerceptionTest_test', nframe=16),
+    'PerceptionTest_test_32frame': partial(PerceptionTest, dataset='PerceptionTest_test', nframe=32),
+    'PerceptionTest_test_1fps': partial(PerceptionTest, dataset='PerceptionTest_test', fps=1.0),
+}
+
 dataset_groups = [
     mmbench_video_dataset, mvbench_dataset, videomme_dataset, videommmu_dataset, longvideobench_dataset,
     mlvu_dataset, tempcompass_dataset, cgbench_dataset, worldsense_dataset, tamperbench_dataset,
     megabench_dataset, qbench_video_dataset, moviechat1k_dataset, vdc_dataset, video_holmes_dataset, vcrbench_dataset,
     cg_av_counting_dataset, video_mmlu_dataset, egoexobench_dataset, dream_1k_dataset, video_tt_dataset,
-    vsibench_dataset, aotbench_dataset, futureomni_dataset
+    vsibench_dataset, aotbench_dataset, futureomni_dataset,
+    charades_sta_dataset, perceptiontest_dataset,
 ]
 
 for grp in dataset_groups:

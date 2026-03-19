@@ -68,6 +68,8 @@ from .videott import VideoTT
 from .worldsense import WorldSense
 from .aotbench import AoTBench
 from .futureomni import FutureOmni
+from .charades_sta import CharadesSTA
+from .perceptiontest import PerceptionTest
 from .qbench_video import QBench_Video, QBench_Video_MCQ, QBench_Video_VQA
 
 from .cmmmu import CMMMU
@@ -245,7 +247,8 @@ VIDEO_DATASET = [
     QBench_Video, QBench_Video_MCQ, QBench_Video_VQA,
     Video_MMLU_CAP, Video_MMLU_QA,
     Video_Holmes, VCRBench, CGAVCounting,
-    EgoExoBench_MCQ, DREAM, VideoTT, VideoMMMU, VSIBench
+    EgoExoBench_MCQ, DREAM, VideoTT, VideoMMMU, VSIBench,
+    CharadesSTA, PerceptionTest,
 
 ]
 
