@@ -53,9 +53,16 @@ class PerceptionTest(VideoBaseDataset):
                 osp.join(root, f'{split_name}-*.parquet'),
                 osp.join(root, f'data/{split_name}-*.parquet'),
                 osp.join(root, f'mc_question/{split_name}-*.parquet'),
+                osp.join(root, f'mc_question_val/*.parquet'),
+                osp.join(root, f'mc_question_val/{split_name}-*.parquet'),
+                # wildcard fallback: any parquet under split-named sub-directory
+                osp.join(root, f'mc_question_val/**/*.parquet'),
             ]:
                 files = sorted(glob.glob(pat, recursive=True))
                 if files:
+                    # Only return for val split if we searched val dirs, else skip
+                    if 'mc_question_val' in pat and split_name != 'val':
+                        continue
                     return files
             return []
 
@@ -121,11 +128,17 @@ class PerceptionTest(VideoBaseDataset):
 
             pd.DataFrame(rows).to_csv(tsv_path, sep='\t', index=False)
 
-        # 1. Locate or download from HuggingFace
-        cache_path = get_cache_path(repo_id)
-        if cache_path is None:
-            print(f'Downloading {repo_id} from HuggingFace ...')
-            cache_path = snapshot_download(repo_id=repo_id, repo_type='dataset')
+        # 1. Local override: set PERCEPTION_TEST_DIR to skip HF download
+        local_dir = os.environ.get('PERCEPTION_TEST_DIR', '').strip()
+        if local_dir and osp.isdir(local_dir):
+            print(f'PerceptionTest: loading from local directory {local_dir}')
+            cache_path = local_dir
+        else:
+            # 1b. Locate or download from HuggingFace
+            cache_path = get_cache_path(repo_id)
+            if cache_path is None:
+                print(f'Downloading {repo_id} from HuggingFace ...')
+                cache_path = snapshot_download(repo_id=repo_id, repo_type='dataset')
 
         # 2. Ensure video files are present / extracted
         video_dir = ensure_videos(cache_path)

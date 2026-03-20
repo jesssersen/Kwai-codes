@@ -39,6 +39,7 @@ export HUGGINGFACE_HUB_CACHE="${HF_HOME}/hub"
 # ---------------------------------------------------------------------------
 export VIDEO_HOLMES_DIR="${VIDEO_HOLMES_DIR:-/m2v_intern/xuboshen/zgw/Benchmarks/Video-Holmes}"
 export TIMELENS_DIR="${TIMELENS_DIR:-/m2v_intern/xuboshen/zgw/hf_cache_temp/TimeLens-Bench}"
+export PERCEPTION_TEST_DIR="${PERCEPTION_TEST_DIR:-/m2v_intern/xuboshen/zgw/Benchmarks/PerceptionTest}"
 
 # ---------------------------------------------------------------------------
 # Multi-GPU data-parallel launch via torchrun.
@@ -58,7 +59,7 @@ CMD=(
   --master-port="${MASTER_PORT:-29500}"
   run.py
   --data
-  Video_Holmes_32frame
+  PerceptionTest_val_16frame
   --model
   Qwen3-VL-4B-Instruct
   --work-dir "${WORK_DIR}"
