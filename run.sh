@@ -35,6 +35,12 @@ export HF_DATASETS_CACHE="${HF_HOME}/datasets"
 export HUGGINGFACE_HUB_CACHE="${HF_HOME}/hub"
 
 # ---------------------------------------------------------------------------
+# Local dataset overrides (skip HuggingFace download).
+# ---------------------------------------------------------------------------
+export VIDEO_HOLMES_DIR="${VIDEO_HOLMES_DIR:-/m2v_intern/xuboshen/zgw/Benchmarks/Video-Holmes}"
+export TIMELENS_DIR="${TIMELENS_DIR:-/m2v_intern/xuboshen/zgw/hf_cache_temp/TimeLens-Bench}"
+
+# ---------------------------------------------------------------------------
 # Multi-GPU data-parallel launch via torchrun.
 #
 # Each rank loads a full copy of the model on its own GPU and processes
