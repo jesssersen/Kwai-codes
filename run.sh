@@ -52,9 +52,7 @@ CMD=(
   --master-port="${MASTER_PORT:-29500}"
   run.py
   --data
-  PerceptionTest_val_16frame
-  PerceptionTest_test_16frame
-  CharadesSTA_1fps
+  Video_Holmes_32frame
   --model
   Qwen3-VL-4B-Instruct
   --work-dir "${WORK_DIR}"
@@ -65,10 +63,13 @@ if [ "${REUSE}" = "1" ]; then
 fi
 
 "${CMD[@]}"
+# PerceptionTest_val_16frame
+#   PerceptionTest_test_16frame
 # AoTBench_ReverseFilm_16frame
 #   AoTBench_UCF101_16frame
 #   AoTBench_Rtime_t2v_16frame
 #   AoTBench_Rtime_v2t_16frame
 #   AoTBench_QA_16frame
 #   FutureOmni_64frame
+# CharadesTimeLens_1fps
   # MVBench_MP4_1fps
