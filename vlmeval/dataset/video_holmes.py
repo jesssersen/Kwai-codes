@@ -52,11 +52,65 @@ class Video_Holmes(VideoBaseDataset):
 
     def prepare_dataset(self, dataset_name='Video_Holmes', repo_id='TencentARC/Video-Holmes'):
 
+        def unzip_hf_zip(pth):
+            import zipfile
+            target_dir = os.path.join(pth, 'video')
+            zip_path = os.path.join(pth, 'videos.zip')
+            if os.path.exists(target_dir) and len(os.listdir(target_dir)) > 0:
+                print('The video file already exists.')
+                return
+            if not os.path.exists(zip_path):
+                raise FileNotFoundError(f'videos.zip not found at {zip_path}')
+            os.makedirs(target_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                for member in zip_ref.namelist():
+                    if not member.endswith('/'):
+                        source = zip_ref.open(member)
+                        target = open(os.path.join(target_dir, os.path.basename(member)), 'wb')
+                        with source, target:
+                            target.write(source.read())
+            print('The video file has been restored and stored from the zip file.')
+
+        def generate_tsv(pth):
+            data_file = osp.join(pth, f'{dataset_name}.tsv')
+            if os.path.exists(data_file):
+                return
+
+            json_path = os.path.join(pth, 'test_Video-Holmes.json')
+            if not os.path.exists(json_path):
+                raise FileNotFoundError(f'test_Video-Holmes.json not found at {json_path}')
+
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            rows = []
+            for idx, item in enumerate(data):
+                video_id = item.get('video ID')
+                options = item.get('Options', {})
+                candidates = [f"{k}. {options.get(k, '')}".replace("'", "")
+                              for k in ['A', 'B', 'C', 'D', 'E', 'F'] if k in options]
+                rows.append({
+                    'index': idx,
+                    'video': video_id,
+                    'video_path': f'./video/{video_id}.mp4',
+                    'candidates': candidates,
+                    'question': item.get('Question', ''),
+                    'answer': item.get('Answer', ''),
+                    'question_id': item.get('Question ID', ''),
+                    'question_type': item.get('Question Type', ''),
+                    'explanation': item.get('Explanation', ''),
+                })
+
+            df = pd.DataFrame(rows)
+            columns = ['index', 'video', 'video_path', 'candidates',
+                       'question', 'answer', 'question_id', 'question_type', 'explanation']
+            df[columns].to_csv(data_file, sep='\t', index=False)
+            print('Generate tsv file OK')
+
         def check_integrity(pth):
             data_file = osp.join(pth, f'{dataset_name}.tsv')
             if not os.path.exists(data_file):
                 return False
-
             if md5(data_file) != self.MD5:
                 return False
             data = load(data_file)
@@ -65,81 +119,30 @@ class Video_Holmes(VideoBaseDataset):
                     return False
             return True
 
-        cache_path = get_cache_path(repo_id)
-        if cache_path is not None and check_integrity(cache_path):
-            dataset_path = cache_path
+        # ---------------------------------------------------------------
+        # 1. Local override: set VIDEO_HOLMES_DIR to skip HF download
+        # ---------------------------------------------------------------
+        local_dir = os.environ.get('VIDEO_HOLMES_DIR', '').strip()
+        if local_dir and osp.isdir(local_dir):
+            print(f'Video_Holmes: loading from local directory {local_dir}')
+            unzip_hf_zip(local_dir)
+            generate_tsv(local_dir)
+            dataset_path = local_dir
+        # ---------------------------------------------------------------
+        # 2. HuggingFace / ModelScope path (original behaviour)
+        # ---------------------------------------------------------------
         else:
-            def unzip_hf_zip(pth):
-                import zipfile
-                base_dir = pth
-                target_dir = os.path.join(pth, 'video/')
-                zip_files = [
-                    os.path.join(base_dir, file) for file in os.listdir(base_dir)
-                    if file == "videos.zip"
-                ]
-                zip_files.sort()
-
-                if not os.path.exists(target_dir):
-                    os.makedirs(target_dir, exist_ok=True)
-                    for zip_file in zip_files:
-                        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-                            for member in zip_ref.namelist():
-                                # Check if the member is a file (not a directory)
-                                if not member.endswith('/'):
-                                    # Extract the file to the specified directory
-                                    source = zip_ref.open(member)
-                                    target = open(os.path.join(target_dir, os.path.basename(member)), 'wb')
-                                    with source, target:
-                                        target.write(source.read())
-                    print('The video file has been restored and stored from the zip file.')
-                else:
-                    print('The video file already exists.')
-
-            def generate_tsv(pth):
-
-                data_file = osp.join(pth, f'{dataset_name}.tsv')
-                if os.path.exists(data_file) and md5(data_file) == self.MD5:
-                    return
-
-                with open(os.path.join(pth, 'test_Video-Holmes.json'), 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-
-                rows = []
-
-                for idx, item in enumerate(data):
-
-                    video_id = item.get('video ID')
-                    options = item.get('Options', {})
-                    candidates = [f"{k}. {options.get(k, '')}".replace("'","")
-                                  for k in ['A', 'B', 'C', 'D', 'E', 'F'] if k in options]
-                    row = {
-                        'index': idx,
-                        'video': video_id,
-                        'video_path': f'./video/{video_id}.mp4',
-                        'candidates': candidates,
-                        'question': item.get('Question', ''),
-                        'answer': item.get('Answer', ''),
-                        'question_id': item.get('Question ID', ''),
-                        'question_type': item.get('Question Type', ''),
-                        'explanation': item.get('Explanation', ''),
-                    }
-                    rows.append(row)
-
-                df = pd.DataFrame(rows)
-                columns = ['index', 'video', 'video_path', 'candidates',
-                           'question', 'answer', 'question_id', 'question_type', 'explanation']
-                df = df[columns]
-                df.to_csv(data_file, sep='\t', index=False)
-                print("Generate tsv file OK")
-
-            if modelscope_flag_set():
-                from modelscope import dataset_snapshot_download
-                dataset_path = dataset_snapshot_download(dataset_id=repo_id)
+            cache_path = get_cache_path(repo_id)
+            if cache_path is not None and check_integrity(cache_path):
+                dataset_path = cache_path
             else:
-                dataset_path = snapshot_download(repo_id=repo_id, repo_type='dataset')
-
-            unzip_hf_zip(dataset_path)
-            generate_tsv(dataset_path)
+                if modelscope_flag_set():
+                    from modelscope import dataset_snapshot_download
+                    dataset_path = dataset_snapshot_download(dataset_id=repo_id)
+                else:
+                    dataset_path = snapshot_download(repo_id=repo_id, repo_type='dataset')
+                unzip_hf_zip(dataset_path)
+                generate_tsv(dataset_path)
 
         data_file = osp.join(dataset_path, f'{dataset_name}.tsv')
         return dict(data_file=data_file, root=dataset_path)
