@@ -34,7 +34,9 @@ LOCAL_RANK = int(os.environ.get("LOCAL_RANK", 0))
 
 if __name__ == '__main__':
     GPU_LIST = get_gpu_list()
-    if LOCAL_WORLD_SIZE > 1 and len(GPU_LIST):
+    # When launched via launch_workers.py, CUDA_VISIBLE_DEVICES is already
+    # narrowed to a single GPU per worker — skip the torchrun GPU assignment.
+    if LOCAL_WORLD_SIZE > 1 and len(GPU_LIST) and not os.environ.get('VLMEVAL_BARRIER_DIR'):
         NGPU = len(GPU_LIST)
         assert NGPU >= LOCAL_WORLD_SIZE, "The number of processes should be less than or equal to the number of GPUs"
         GPU_PER_PROC = NGPU // LOCAL_WORLD_SIZE
