@@ -195,22 +195,34 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             os.environ['VLLM_HOST_IP'] = '127.0.0.1'
 
             import sys
+            import torch.distributed as _dist
             print(
                 f'[vLLM init] pid={os.getpid()} CUDA_VISIBLE_DEVICES={os.environ.get("CUDA_VISIBLE_DEVICES","N/A")} '
                 f'tp_size={tp_size} gpu_count={gpu_count} max_num_seqs={max_num_seqs}',
                 flush=True
             )
             print(f'[vLLM init] Removed torchrun env vars: {list(_dist_env_backup.keys())}', flush=True)
-            print(f'[vLLM init] VLLM_HOST_IP={os.environ.get("VLLM_HOST_IP")}', flush=True)
 
-            # Check if torch.distributed is still alive (it should be — we
-            # no longer destroy it; the gloo process group is harmless since
-            # vLLM EngineCore is spawned, not forked).
-            import torch.distributed as _dist
-            print(f'[vLLM init] torch.distributed initialized: {_dist.is_initialized()}', flush=True)
+            # ── Critical fix: destroy the gloo process group ──
+            # vLLM checks torch.distributed.is_initialized() internally.
+            # If it finds an existing group (our gloo group with world_size=2),
+            # it tries to use it for coordination, causing a deadlock since
+            # both ranks are inside LLM() simultaneously.
+            _had_dist = _dist.is_initialized()
+            if _had_dist:
+                print('[vLLM init] Destroying gloo process group before LLM() to avoid deadlock', flush=True)
+                _dist.barrier()  # sync so both ranks destroy together
+                _dist.destroy_process_group()
+
+            # Belt-and-suspenders: monkey-patch is_initialized to return False
+            # so any vLLM code that checks it won't try to use distributed ops.
+            _orig_is_init = _dist.is_initialized
+            _dist.is_initialized = lambda: False
+
+            print(f'[vLLM init] torch.distributed.is_initialized() = {_orig_is_init()}', flush=True)
+            print(f'[vLLM init] Creating vllm.LLM() ...', flush=True)
 
             try:
-                print(f'[vLLM init] Creating vllm.LLM() ...', flush=True)
                 self.llm = LLM(
                     model=self.model_path,
                     max_num_seqs=max_num_seqs,
@@ -228,8 +240,20 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
                 print(f'[vLLM init] LLM() FAILED: {_e}', file=sys.stderr, flush=True)
                 raise
             finally:
+                # Restore monkey-patch
+                _dist.is_initialized = _orig_is_init
+                # Restore env vars
                 os.environ.update(_dist_env_backup)
                 print(f'[vLLM init] Restored torchrun env vars: {list(_dist_env_backup.keys())}', flush=True)
+                # Re-create the gloo process group for subsequent barrier() calls
+                if _had_dist:
+                    print('[vLLM init] Re-initializing gloo process group ...', flush=True)
+                    import datetime as _dt
+                    _dist.init_process_group(
+                        backend='gloo',
+                        timeout=_dt.timedelta(seconds=int(os.environ.get('DIST_TIMEOUT', 3600)))
+                    )
+                    print(f'[vLLM init] gloo process group re-initialized, rank={_dist.get_rank()}', flush=True)
         else:
             if listinstr(['omni'], model_path.lower()):
                 self.model = Qwen3OmniMoeForConditionalGeneration.from_pretrained(
