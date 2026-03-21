@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import time
 from functools import partial
 
 os.environ["HUGGINGFACE_HUB_CACHE"] = "/m2v_intern/xuboshen/zgw/hf_cache_temp"
@@ -250,8 +251,12 @@ def main():
 
     if WORLD_SIZE > 1:
         import torch.distributed as dist
+        # vLLM manages its own GPU workers internally; using nccl here would
+        # conflict with vLLM's process group.  Fall back to gloo (CPU-only
+        # collective ops) which is sufficient for the barrier-only usage here.
+        dist_backend = 'gloo' if args.use_vllm else 'nccl'
         dist.init_process_group(
-            backend='nccl',
+            backend=dist_backend,
             timeout=datetime.timedelta(seconds=int(os.environ.get('DIST_TIMEOUT', 3600)))
         )
 
@@ -278,6 +283,7 @@ def main():
             if WORLD_SIZE > 1:
                 dist.barrier()
 
+            bench_start_time = time.time()
             try:
                 pred_format = get_pred_file_format()
                 result_file_base = f'{model_name}_{dataset_name}.{pred_format}'
@@ -520,6 +526,21 @@ def main():
                 logger.exception(f'Model {model_name} x Dataset {dataset_name} combination failed: {e}, '
                                  'skipping this combination.')
                 continue
+            finally:
+                bench_elapsed = time.time() - bench_start_time
+                elapsed_min = bench_elapsed / 60
+                logger.info(
+                    f'[Timing] Model {model_name} x Dataset {dataset_name} '
+                    f'took {elapsed_min:.2f} min ({bench_elapsed:.1f}s) [RANK={RANK}]'
+                )
+                if RANK == 0:
+                    timing_file = osp.join(args.work_dir, 'timing.log')
+                    ts = time.strftime('%Y-%m-%d %H:%M:%S')
+                    with open(timing_file, 'a') as _tf:
+                        _tf.write(
+                            f'[{ts}] {model_name} x {dataset_name}: '
+                            f'{elapsed_min:.2f} min ({bench_elapsed:.1f}s)\n'
+                        )
 
     if WORLD_SIZE > 1:
         dist.destroy_process_group()

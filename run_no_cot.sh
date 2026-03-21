@@ -55,6 +55,7 @@ export USE_COT=0
 CMD=(
   torchrun
   --nproc-per-node="${NGPU}"
+  --master-addr="${MASTER_ADDR:-127.0.0.1}"
   --master-port="${MASTER_PORT:-29500}"
   run.py
   --use-vllm
