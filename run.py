@@ -22,25 +22,29 @@ def get_gpu_list():
         return []
 
 
+# GPU assignment is guarded by __name__ check because vLLM spawns worker
+# subprocesses that re-execute this module.  At that point CUDA_VISIBLE_DEVICES
+# has already been narrowed to one GPU while LOCAL_WORLD_SIZE still reflects
+# the full torchrun value, which would trip the assert.
 RANK = int(os.environ.get('RANK', 0))
 WORLD_SIZE = int(os.environ.get('WORLD_SIZE', 1))
-LOCAL_WORLD_SIZE = int(os.environ.get("LOCAL_WORLD_SIZE",1))
-LOCAL_RANK = int(os.environ.get("LOCAL_RANK",1))
+LOCAL_WORLD_SIZE = int(os.environ.get("LOCAL_WORLD_SIZE", 1))
+LOCAL_RANK = int(os.environ.get("LOCAL_RANK", 0))
 
-GPU_LIST = get_gpu_list()
-if LOCAL_WORLD_SIZE > 1 and len(GPU_LIST):
-    NGPU = len(GPU_LIST)
-    assert NGPU >= LOCAL_WORLD_SIZE, "The number of processes should be less than or equal to the number of GPUs"
-    GPU_PER_PROC = NGPU // LOCAL_WORLD_SIZE
-    DEVICE_START_IDX = GPU_PER_PROC * LOCAL_RANK
-    CUDA_VISIBLE_DEVICES = [str(i) for i in GPU_LIST[DEVICE_START_IDX: DEVICE_START_IDX + GPU_PER_PROC]]
-    CUDA_VISIBLE_DEVICES = ','.join(CUDA_VISIBLE_DEVICES)
-    # Set CUDA_VISIBLE_DEVICES
-    os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
-    print(
-        f'RANK: {RANK}, LOCAL_RANK: {LOCAL_RANK}, WORLD_SIZE: {WORLD_SIZE},'
-        f'LOCAL_WORLD_SIZE: {LOCAL_WORLD_SIZE}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES}'
-    )
+if __name__ == '__main__':
+    GPU_LIST = get_gpu_list()
+    if LOCAL_WORLD_SIZE > 1 and len(GPU_LIST):
+        NGPU = len(GPU_LIST)
+        assert NGPU >= LOCAL_WORLD_SIZE, "The number of processes should be less than or equal to the number of GPUs"
+        GPU_PER_PROC = NGPU // LOCAL_WORLD_SIZE
+        DEVICE_START_IDX = GPU_PER_PROC * LOCAL_RANK
+        CUDA_VISIBLE_DEVICES = [str(i) for i in GPU_LIST[DEVICE_START_IDX: DEVICE_START_IDX + GPU_PER_PROC]]
+        CUDA_VISIBLE_DEVICES = ','.join(CUDA_VISIBLE_DEVICES)
+        os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
+        print(
+            f'RANK: {RANK}, LOCAL_RANK: {LOCAL_RANK}, WORLD_SIZE: {WORLD_SIZE},'
+            f'LOCAL_WORLD_SIZE: {LOCAL_WORLD_SIZE}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES}'
+        )
 
 
 from vlmeval.config import supported_VLM
