@@ -1214,6 +1214,54 @@ qwen3vl_series = {
         top_p=0.8,
         top_k=20
     ),
+    "Qwen3-VL-4B-Instruct_aot_ablation_exp1_v2t_binary": partial(
+        Qwen3VLChat,
+        model_path="/m2v_intern/xuboshen/zgw/RL-Models/VideoProxyMixed/ablation_merged/Qwen3-VL-4B-Instruct_aot_ablation_exp1_v2t_binary",
+        use_custom_prompt=False,
+        use_vllm=True,
+        temperature=0.7, 
+        max_new_tokens=16384,
+        repetition_penalty=1.0,
+        presence_penalty=1.5,
+        top_p=0.8,
+        top_k=20
+    ),
+    "Qwen3-VL-4B-Instruct_aot_ablation_exp2_v2t_3way": partial(
+        Qwen3VLChat,
+        model_path="/m2v_intern/xuboshen/zgw/RL-Models/VideoProxyMixed/ablation_merged/Qwen3-VL-4B-Instruct_aot_ablation_exp2_v2t_3way",
+        use_custom_prompt=False,
+        use_vllm=True,
+        temperature=0.7, 
+        max_new_tokens=16384,
+        repetition_penalty=1.0,
+        presence_penalty=1.5,
+        top_p=0.8,
+        top_k=20
+    ),
+    "Qwen3-VL-4B-Instruct_aot_ablation_exp3_t2v_binary": partial(
+        Qwen3VLChat,
+        model_path="/m2v_intern/xuboshen/zgw/RL-Models/VideoProxyMixed/ablation_merged/Qwen3-VL-4B-Instruct_aot_ablation_exp3_t2v_binary",
+        use_custom_prompt=False,
+        use_vllm=True,
+        temperature=0.7, 
+        max_new_tokens=16384,
+        repetition_penalty=1.0,
+        presence_penalty=1.5,
+        top_p=0.8,
+        top_k=20
+    ),
+    "Qwen3-VL-4B-Instruct_aot_ablation_exp4_t2v_3way": partial(
+        Qwen3VLChat,
+        model_path="/m2v_intern/xuboshen/zgw/RL-Models/VideoProxyMixed/ablation_merged/Qwen3-VL-4B-Instruct_aot_ablation_exp4_t2v_3way",
+        use_custom_prompt=False,
+        use_vllm=True,
+        temperature=0.7, 
+        max_new_tokens=16384,
+        repetition_penalty=1.0,
+        presence_penalty=1.5,
+        top_p=0.8,
+        top_k=20
+    ),
     "Qwen3-VL-4B-Instruct-seg": partial(
         Qwen3VLChat,
         model_path="/m2v_intern/xuboshen/zgw/RL-Models/RetRL-Qwen3VL4B-Segmentation-LoRA/v2-20260305-063325/checkpoint-300-merged",

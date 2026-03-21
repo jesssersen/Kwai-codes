@@ -5,7 +5,7 @@ Scans a work_dir for evaluation result files, extracts accuracy/score
 per model × benchmark, and saves comparison bar charts.
 
 Usage:
-    python scripts/visualize_results.py --work-dir /m2v_intern/xuboshen/zgw/eval_8gpu --out-dir ./plots
+    python scripts/visualize_results.py --work-dir /m2v_intern/xuboshen/zgw/VideoProxyMixed/evaluation --out-dir ./eval/aot_ablation
     python scripts/visualize_results.py --work-dir /path/to/outputs  # saves to work_dir/plots
 """
 import argparse

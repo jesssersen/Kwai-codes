@@ -60,9 +60,20 @@ CMD=(
   --master-port="${MASTER_PORT:-29500}"
   run.py
   --data
+  AoTBench_ReverseFilm_16frame
+  AoTBench_UCF101_16frame
+  AoTBench_Rtime_t2v_16frame
+  AoTBench_Rtime_v2t_16frame
+  AoTBench_QA_16frame
+  FutureOmni_64frame
+  CharadesTimeLens_1fps
+  MVBench_MP4_1fps
   PerceptionTest_val_16frame
   --model
-  Qwen3-VL-4B-Instruct
+  Qwen3-VL-4B-Instruct_aot_ablation_exp1_v2t_binary
+  Qwen3-VL-4B-Instruct_aot_ablation_exp2_v2t_3way
+  Qwen3-VL-4B-Instruct_aot_ablation_exp3_t2v_binary
+  Qwen3-VL-4B-Instruct_aot_ablation_exp4_t2v_3way
   --work-dir "${WORK_DIR}"
 )
 
