@@ -191,6 +191,18 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
                 'ROLE_RANK', 'ROLE_WORLD_SIZE', 'TORCHELASTIC_RUN_ID',
             ]
             _dist_env_backup = {k: os.environ.pop(k) for k in _dist_env_keys if k in os.environ}
+
+            # Destroy the existing torch.distributed process group (gloo)
+            # so vLLM's EngineCore subprocess doesn't inherit stale state.
+            import torch.distributed as _dist
+            _had_dist = _dist.is_initialized()
+            if _had_dist:
+                logging.info('[vLLM init] Destroying existing torch.distributed process group before LLM()')
+                _dist.destroy_process_group()
+
+            # Force vLLM to bind to loopback
+            os.environ['VLLM_HOST_IP'] = '127.0.0.1'
+
             logging.info(
                 f'[vLLM init] Temporarily removed torchrun env vars: {list(_dist_env_backup.keys())}'
             )
@@ -209,6 +221,15 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
                 )
             finally:
                 os.environ.update(_dist_env_backup)
+                # Re-initialize the process group so barrier() calls still work.
+                if _had_dist:
+                    logging.info('[vLLM init] Re-initializing gloo process group after LLM()')
+                    import datetime as _dt
+                    _dist.init_process_group(
+                        backend='gloo',
+                        timeout=_dt.timedelta(seconds=int(os.environ.get('DIST_TIMEOUT', 3600)))
+                    )
+                    logging.info(f'[vLLM init] gloo process group re-initialized successfully')
                 logging.info(
                     f'[vLLM init] Restored torchrun env vars: {list(_dist_env_backup.keys())}'
                 )

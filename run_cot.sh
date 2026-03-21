@@ -5,6 +5,11 @@ set -x
 # Disable torch compile to avoid startup overhead.
 export TORCH_COMPILE_DISABLE=1
 
+# Force all distributed / vLLM networking to use loopback (single-node).
+export GLOO_SOCKET_IFNAME=lo
+export NCCL_SOCKET_IFNAME=lo
+export VLLM_HOST_IP=127.0.0.1
+
 # Resolve libcuda lookup issues on some nodes.
 export LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LIBRARY_PATH:-}
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
