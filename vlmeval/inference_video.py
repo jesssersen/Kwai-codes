@@ -217,7 +217,18 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
 
         if batch_structs:
             chunk_size = int(os.environ.get('VLLM_BATCH_CHUNK_SIZE', '32'))
-            responses = model.generate_batch_vllm(batch_structs, dataset=dataset_name, chunk_size=chunk_size)
+            try:
+                responses = model.generate_batch_vllm(
+                    batch_structs, dataset=dataset_name, chunk_size=chunk_size
+                )
+            except Exception as vllm_err:
+                if not skip_err:
+                    raise
+                logging.warning(
+                    f'generate_batch_vllm failed for {model_name}/{dataset_name}, '
+                    f'marking {len(batch_indices)} samples as empty. Error: {vllm_err}'
+                )
+                responses = [''] * len(batch_indices)
             for idx, resp in zip(batch_indices, responses):
                 res[idx] = resp
             dump(res, out_file)

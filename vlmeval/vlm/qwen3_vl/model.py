@@ -837,41 +837,97 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             presence_penalty=self.presence_penalty,
             stop_token_ids=None,
         )
+        skip_err = os.environ.get('SKIP_ERR', '0') == '1'
         results = []
+        # CoT truncation statistics
+        _cot_total = 0
+        _cot_truncated = 0  # finish_reason == 'length' (max_tokens hit)
+        _cot_no_answer_tag = 0  # <answer> tag missing
         total_chunks = (len(messages) + chunk_size - 1) // chunk_size
         for chunk_start in _tqdm(range(0, len(messages), chunk_size),
                                  total=total_chunks,
                                  desc='vLLM batch generate (chunks)'):
             chunk = messages[chunk_start: chunk_start + chunk_size]
-            reqs = [self._build_vllm_request(msg, dataset=dataset) for msg in chunk]
-            outputs = self.llm.generate(reqs, sampling_params=sampling_params, use_tqdm=False)
-            for o in outputs:
-                generated_text = o.outputs[0].text
-                if self.post_process:
-                    resp = generated_text.split('\\boxed{')[-1]
-                    lt = len(resp)
-                    counter, end = 1, None
-                    for i in range(lt):
-                        if resp[i] == '{':
-                            counter += 1
-                        elif resp[i] == '}':
-                            counter -= 1
-                        if counter == 0:
-                            end = i
-                            break
-                        elif i == lt - 1:
-                            end = lt
-                            break
-                    if end is not None:
-                        generated_text = resp[:end]
-                if self.extract_think_answer:
-                    import re
-                    m = re.search(r'<answer>(.*?)</answer>', generated_text, re.DOTALL)
-                    if m:
-                        generated_text = m.group(1).strip()
-                    else:
-                        generated_text = re.sub(r'<think>.*?</think>', '', generated_text, flags=re.DOTALL).strip()
-                results.append(generated_text)
+
+            # Build requests per-sample so a bad video doesn't kill the whole chunk.
+            valid_reqs = []
+            valid_positions = []
+            for i, msg in enumerate(chunk):
+                try:
+                    valid_reqs.append(self._build_vllm_request(msg, dataset=dataset))
+                    valid_positions.append(i)
+                except Exception as build_err:
+                    if not skip_err:
+                        raise
+                    import logging as _logging
+                    _logging.warning(
+                        f'generate_batch_vllm: _build_vllm_request failed '
+                        f'for sample {chunk_start + i}, skipping. Error: {build_err}'
+                    )
+
+            # Placeholders for the whole chunk; fill in successful results by position.
+            chunk_results = [''] * len(chunk)
+            if valid_reqs:
+                try:
+                    outputs = self.llm.generate(
+                        valid_reqs, sampling_params=sampling_params, use_tqdm=False
+                    )
+                except Exception as gen_err:
+                    if not skip_err:
+                        raise
+                    import logging as _logging
+                    _logging.warning(
+                        f'generate_batch_vllm: llm.generate failed for chunk '
+                        f'starting at {chunk_start} ({len(valid_reqs)} reqs), '
+                        f'skipping chunk. Error: {gen_err}'
+                    )
+                    results.extend(chunk_results)
+                    continue
+                for pos, o in zip(valid_positions, outputs):
+                    generated_text = o.outputs[0].text if o.outputs else ''
+                    # Track CoT truncation stats
+                    if self.extract_think_answer:
+                        _cot_total += 1
+                        finish_reason = getattr(o.outputs[0], 'finish_reason', None) if o.outputs else None
+                        if finish_reason == 'length':
+                            _cot_truncated += 1
+                    if self.post_process:
+                        resp = generated_text.split('\\boxed{')[-1]
+                        lt = len(resp)
+                        counter, end = 1, None
+                        for i in range(lt):
+                            if resp[i] == '{':
+                                counter += 1
+                            elif resp[i] == '}':
+                                counter -= 1
+                            if counter == 0:
+                                end = i
+                                break
+                            elif i == lt - 1:
+                                end = lt
+                                break
+                        if end is not None:
+                            generated_text = resp[:end]
+                    if self.extract_think_answer:
+                        import re
+                        m = re.search(r'<answer>(.*?)</answer>', generated_text, re.DOTALL)
+                        if m:
+                            generated_text = m.group(1).strip()
+                        else:
+                            _cot_no_answer_tag += 1
+                            generated_text = re.sub(
+                                r'<think>.*?</think>', '', generated_text, flags=re.DOTALL
+                            ).strip()
+                    chunk_results[pos] = generated_text
+            results.extend(chunk_results)
+        # Log CoT truncation summary
+        if self.extract_think_answer and _cot_total > 0:
+            import logging as _logging
+            _logging.warning(
+                f'[CoT Stats] total={_cot_total}, '
+                f'truncated(max_tokens)={_cot_truncated} ({_cot_truncated*100/_cot_total:.1f}%), '
+                f'missing_<answer>_tag={_cot_no_answer_tag} ({_cot_no_answer_tag*100/_cot_total:.1f}%)'
+            )
         return results
 
     def generate_inner_vllm(self, message, dataset=None):

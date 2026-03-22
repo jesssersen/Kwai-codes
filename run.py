@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import subprocess
 import time
@@ -336,7 +337,18 @@ def main():
                 barrier()
 
             bench_start_time = time.time()
+            # Per model x dataset log file capturing all warnings/errors from
+            # every layer (model.py, inference_video.py, etc.).
+            _bench_log_handler = None
             try:
+                log_dir = osp.join(pred_root, 'logs')
+                os.makedirs(log_dir, exist_ok=True)
+                _bench_log_path = osp.join(log_dir, f'{model_name}_{dataset_name}_rank{RANK}.log')
+                _bench_log_handler = logging.FileHandler(_bench_log_path, mode='a')
+                _bench_log_handler.setFormatter(
+                    logging.Formatter('[%(asctime)s] %(levelname)s - %(name)s: %(message)s')
+                )
+                logging.getLogger().addHandler(_bench_log_handler)
                 pred_format = get_pred_file_format()
                 result_file_base = f'{model_name}_{dataset_name}.{pred_format}'
 
@@ -563,13 +575,13 @@ def main():
                             os.remove(link_addr)
                         os.symlink(file_addr, link_addr)
 
-                    # Bench-centric symlinks: work_dir/{dataset_name}/{model_name_dataset_name.*}
-                    bench_root = osp.join(args.work_dir, dataset_name)
-                    os.makedirs(bench_root, exist_ok=True)
+                    # Bench-centric symlinks: work_dir/{dataset_name}/{model_name}/{files}
+                    bench_model_root = osp.join(args.work_dir, dataset_name, model_name)
+                    os.makedirs(bench_model_root, exist_ok=True)
                     for f in files:
                         cwd = os.getcwd()
                         file_addr = osp.join(cwd, pred_root, f)
-                        link_addr = osp.join(cwd, bench_root, f)
+                        link_addr = osp.join(cwd, bench_model_root, f)
                         if osp.exists(link_addr) or osp.islink(link_addr):
                             os.remove(link_addr)
                         os.symlink(file_addr, link_addr)
@@ -579,6 +591,10 @@ def main():
                                  'skipping this combination.')
                 continue
             finally:
+                # Remove per-bench log handler
+                if _bench_log_handler is not None:
+                    logging.getLogger().removeHandler(_bench_log_handler)
+                    _bench_log_handler.close()
                 bench_elapsed = time.time() - bench_start_time
                 elapsed_min = bench_elapsed / 60
                 logger.info(
