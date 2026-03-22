@@ -71,6 +71,8 @@ export VLLM_GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.85}"
 # Datasets & Models
 # ---------------------------------------------------------------------------
 DATASETS=(
+  MLVU_64frame
+  Video_Holmes_64frame
   AoTBench_ReverseFilm_16frame
   AoTBench_UCF101_16frame
   AoTBench_Rtime_t2v_16frame
@@ -80,14 +82,11 @@ DATASETS=(
   CharadesTimeLens_1fps
   MVBench_MP4_1fps
   PerceptionTest_val_16frame
+  Video-MME_64frame
 )
 
 MODELS=(
   Qwen3-VL-4B-Instruct
-  Qwen3-VL-4B-Instruct_aot_ablation_exp1_v2t_binary
-  Qwen3-VL-4B-Instruct_aot_ablation_exp2_v2t_3way
-  Qwen3-VL-4B-Instruct_aot_ablation_exp3_t2v_binary
-  Qwen3-VL-4B-Instruct_aot_ablation_exp4_t2v_3way
 )
 
 # ---------------------------------------------------------------------------

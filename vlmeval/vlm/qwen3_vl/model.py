@@ -107,6 +107,14 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             self.post_prompt = None
             self.extract_think_answer = False
 
+        # TEMPERATURE env var allows overriding temperature independently of CoT.
+        temp_override = os.environ.get('TEMPERATURE')
+        if temp_override is not None:
+            temp_val = float(temp_override)
+            self.temperature = temp_val
+            self.do_sample = temp_val > 0
+            self.generate_kwargs.update(temperature=temp_val, do_sample=temp_val > 0)
+
         self.fps = kwargs.pop('fps', 2)
         self.nframe = kwargs.pop('nframe', 128)
         self.FRAME_FACTOR = 2
