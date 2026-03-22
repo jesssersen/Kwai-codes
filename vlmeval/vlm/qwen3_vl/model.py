@@ -177,7 +177,7 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             if listinstr(['omni'], self.model_path.lower()):
                 limit_mm = {"image": 3, "video": 3, "audio": 3}
             else:
-                limit_mm = {"image": self.limit_mm_per_prompt}
+                limit_mm = {"image": self.limit_mm_per_prompt, "video": self.limit_mm_per_prompt}
             max_num_seqs = int(os.environ.get('VLLM_MAX_NUM_SEQS', '8'))
 
             # ── Isolate vLLM from torchrun's distributed env vars ──
@@ -233,6 +233,7 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
                     enforce_eager=True,
                     gpu_memory_utilization=kwargs.get("gpu_utils", float(os.environ.get('VLLM_GPU_MEMORY_UTILIZATION', 0.85))),
                     trust_remote_code=True,
+                    limit_mm_per_prompt=limit_mm,
                 )
                 print(f'[vLLM init] LLM() created successfully, pid={os.getpid()}', flush=True)
             except Exception as _e:
@@ -826,6 +827,18 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
         """
         if chunk_size is None:
             chunk_size = int(os.environ.get('VLLM_BATCH_CHUNK_SIZE', '32'))
+        # Adaptive: cap chunk_size so total visual tokens stay manageable.
+        # ~200 tokens/frame; target ≤ 200k visual tokens per chunk.
+        max_visual_tokens_per_chunk = int(os.environ.get('VLLM_MAX_VISUAL_TOKENS_PER_CHUNK', '200000'))
+        tokens_per_sample = (self.nframe or 16) * 200
+        adaptive_max = max(1, max_visual_tokens_per_chunk // tokens_per_sample)
+        if chunk_size > adaptive_max:
+            import logging as _logging
+            _logging.info(
+                f'Adaptive chunk_size: {chunk_size} -> {adaptive_max} '
+                f'(nframe={self.nframe}, ~{tokens_per_sample} tokens/sample)'
+            )
+            chunk_size = adaptive_max
         from vllm import SamplingParams
         from tqdm import tqdm as _tqdm
         sampling_params = SamplingParams(
@@ -849,21 +862,35 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
                                  desc='vLLM batch generate (chunks)'):
             chunk = messages[chunk_start: chunk_start + chunk_size]
 
-            # Build requests per-sample so a bad video doesn't kill the whole chunk.
+            # Build requests in parallel (video decoding is I/O + CPU bound).
+            from concurrent.futures import ThreadPoolExecutor, as_completed
             valid_reqs = []
             valid_positions = []
-            for i, msg in enumerate(chunk):
-                try:
-                    valid_reqs.append(self._build_vllm_request(msg, dataset=dataset))
-                    valid_positions.append(i)
-                except Exception as build_err:
-                    if not skip_err:
-                        raise
-                    import logging as _logging
-                    _logging.warning(
-                        f'generate_batch_vllm: _build_vllm_request failed '
-                        f'for sample {chunk_start + i}, skipping. Error: {build_err}'
-                    )
+            n_workers = min(len(chunk), int(os.environ.get('VLLM_BUILD_WORKERS', '8')))
+
+            def _build_one(idx_msg):
+                i, msg = idx_msg
+                return i, self._build_vllm_request(msg, dataset=dataset)
+
+            with ThreadPoolExecutor(max_workers=n_workers) as pool:
+                futures = {pool.submit(_build_one, (i, msg)): i for i, msg in enumerate(chunk)}
+                for fut in as_completed(futures):
+                    i = futures[fut]
+                    try:
+                        _, req = fut.result()
+                        valid_reqs.append((i, req))
+                    except Exception as build_err:
+                        if not skip_err:
+                            raise
+                        import logging as _logging
+                        _logging.warning(
+                            f'generate_batch_vllm: _build_vllm_request failed '
+                            f'for sample {chunk_start + i}, skipping. Error: {build_err}'
+                        )
+            # Sort by original position to maintain order.
+            valid_reqs.sort(key=lambda x: x[0])
+            valid_positions = [x[0] for x in valid_reqs]
+            valid_reqs = [x[1] for x in valid_reqs]
 
             # Placeholders for the whole chunk; fill in successful results by position.
             chunk_results = [''] * len(chunk)
