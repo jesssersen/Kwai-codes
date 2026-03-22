@@ -151,14 +151,19 @@ class MLVU_MCQ(VideoBaseDataset):
                     task_type = str(row.get('task_type', ''))
                     prefix = task_to_prefix.get(task_type, f'./MLVU/video/{task_type}')
                     video = row.get('video', row.get('video_uid', row.get('video_id', '')))
+                    # Parquet may contain NaN for missing fields; coerce to str to
+                    # prevent os.path.join from receiving float64 values.
+                    if pd.isna(video) or not str(video).strip():
+                        continue
+                    video = str(video)
                     candidates = row.get('candidates', row.get('options', ''))
                     self.data_list.append({
                         'task_type': task_type,
-                        'prefix': prefix,
+                        'prefix': str(prefix),
                         'duration': row.get('duration', ''),
                         'video': video,
-                        'question': row.get('question', ''),
-                        'answer': row.get('answer', ''),
+                        'question': str(row.get('question', '')),
+                        'answer': str(row.get('answer', '')),
                         'candidates': candidates,
                     })
             if not self.data_list:
@@ -213,9 +218,9 @@ class MLVU_MCQ(VideoBaseDataset):
         return question, answer
 
     def save_video_frames(self, line):
-        suffix = line['video'].split('.')[-1]
-        video = line['video'].replace(f'.{suffix}','')
-        vid_path = osp.join(self.data_root, line['prefix'], line['video'])
+        suffix = str(line['video']).split('.')[-1]
+        video = str(line['video']).replace(f'.{suffix}','')
+        vid_path = osp.join(self.data_root, str(line['prefix']), str(line['video']))
         import decord
         vid = decord.VideoReader(vid_path)
         video_info = {
@@ -259,7 +264,7 @@ class MLVU_MCQ(VideoBaseDataset):
 
         question, answer = self.qa_template(line)
         message = [dict(type='text', value=self.SYS, role='system')]
-        video_path = os.path.join(self.data_root, line['prefix'], line['video'])
+        video_path = os.path.join(self.data_root, str(line['prefix']), str(line['video']))
         if video_llm:
             message.append(dict(type='video', value=video_path))
         else:
@@ -422,13 +427,16 @@ class MLVU_OpenEnded(VideoBaseDataset):
                     task_type = str(row.get('task_type', ''))
                     prefix = task_to_prefix.get(task_type, f'./MLVU/video/{task_type}')
                     video = row.get('video', row.get('video_uid', row.get('video_id', '')))
+                    if pd.isna(video) or not str(video).strip():
+                        continue
+                    video = str(video)
                     self.data_list.append({
                         'task_type': task_type,
-                        'prefix': prefix,
+                        'prefix': str(prefix),
                         'duration': row.get('duration', ''),
                         'video': video,
-                        'question': row.get('question', ''),
-                        'answer': row.get('answer', ''),
+                        'question': str(row.get('question', '')),
+                        'answer': str(row.get('answer', '')),
                         'scoring_points': row.get('scoring_points', ''),
                     })
             if not self.data_list:
@@ -475,9 +483,9 @@ class MLVU_OpenEnded(VideoBaseDataset):
         return question, answer
 
     def save_video_frames(self, line):
-        suffix = line['video'].split('.')[-1]
-        video = line['video'].replace(f'.{suffix}','')
-        vid_path = osp.join(self.data_root, line['prefix'], line['video'])
+        suffix = str(line['video']).split('.')[-1]
+        video = str(line['video']).replace(f'.{suffix}','')
+        vid_path = osp.join(self.data_root, str(line['prefix']), str(line['video']))
         import decord
         vid = decord.VideoReader(vid_path)
         video_info = {
@@ -521,7 +529,7 @@ class MLVU_OpenEnded(VideoBaseDataset):
 
         question, answer = self.qa_template(line)
         message = [dict(type='text', value=self.SYS, role='system')]
-        video_path = os.path.join(self.data_root, line['prefix'], line['video'])
+        video_path = os.path.join(self.data_root, str(line['prefix']), str(line['video']))
         if video_llm:
             message.append(dict(type='video', value=video_path))
         else:

@@ -447,7 +447,7 @@ def main():
                 else:
                     print(dataset_name)
                     # MCQ datasets that need only exact matching (no API judge)
-                    if listinstr(['MVBench', 'LongVideoBench', 'MLVU'], dataset_name):
+                    if listinstr(['MVBench', 'LongVideoBench', 'MLVU', 'Video_Holmes', 'Video-MME'], dataset_name):
                         judge_kwargs['model'] = 'exact_matching'
                     elif dataset.TYPE in ['MCQ', 'Y/N', 'MCQ_MMMU_Pro', 'Video-MCQ'] or listinstr(
                         ['moviechat1k', 'mme-reasoning'], dataset_name.lower()
