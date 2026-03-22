@@ -132,8 +132,8 @@ class MLVU_MCQ(VideoBaseDataset):
                             'answer': data.get('answer', ''),
                             'candidates': data.get('candidates', ''),
                         })
-            else:
-                # Fall back to parquet when JSON annotations are absent (e.g. test split)
+            if not self.data_list:
+                # Fall back to parquet when JSON annotations are absent or empty
                 parquet_files = sorted(
                     glob.glob(os.path.join(pth, 'mlvu_test', '*.parquet')) +
                     glob.glob(os.path.join(pth, 'mlvu_dev', '*.parquet'))
@@ -144,26 +144,40 @@ class MLVU_MCQ(VideoBaseDataset):
                     )
                 df = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
                 task_to_prefix = {k: v[1] for k, v in self.type_data_list.items()}
-                mcq_tasks = set(task_to_prefix.keys())
-                if 'task_type' in df.columns:
-                    df = df[df['task_type'].isin(mcq_tasks)]
+                # Do not filter by task_type: test-split parquet may use different
+                # names (e.g. 'needleQA' vs 'needle') or include extra tasks.
                 for _, row in df.iterrows():
                     task_type = str(row.get('task_type', ''))
-                    prefix = task_to_prefix.get(task_type, f'./MLVU/video/{task_type}')
-                    video = row.get('video', row.get('video_uid', row.get('video_id', '')))
-                    # Parquet may contain NaN for missing fields; coerce to str to
-                    # prevent os.path.join from receiving float64 values.
+                    # Parquet video column may be named 'video_name' instead of 'video'
+                    video = row.get('video', row.get('video_name',
+                            row.get('video_uid', row.get('video_id', ''))))
                     if pd.isna(video) or not str(video).strip():
                         continue
                     video = str(video)
+                    # Determine prefix: check if video exists in task-specific subdir,
+                    # otherwise fall back to root directory ('.')
+                    expected_prefix = task_to_prefix.get(task_type, f'./MLVU/video/{task_type}')
+                    if osp.exists(osp.join(pth, expected_prefix, video)):
+                        prefix = expected_prefix
+                    elif osp.exists(osp.join(pth, video)):
+                        prefix = '.'
+                    else:
+                        prefix = expected_prefix
                     candidates = row.get('candidates', row.get('options', ''))
+                    answer = str(row.get('answer', ''))
+                    # Parquet may store answer as option letter (e.g. 'B') instead of
+                    # the option text. Convert letter to text for consistency with JSON format.
+                    if isinstance(candidates, list) and len(answer) == 1 and answer.isalpha():
+                        ans_idx = ord(answer.upper()) - ord('A')
+                        if 0 <= ans_idx < len(candidates):
+                            answer = str(candidates[ans_idx])
                     self.data_list.append({
                         'task_type': task_type,
                         'prefix': str(prefix),
                         'duration': row.get('duration', ''),
                         'video': video,
                         'question': str(row.get('question', '')),
-                        'answer': str(row.get('answer', '')),
+                        'answer': answer,
                         'candidates': candidates,
                     })
             if not self.data_list:
@@ -408,8 +422,8 @@ class MLVU_OpenEnded(VideoBaseDataset):
                             'answer': data.get('answer', ''),
                             'scoring_points': data.get('scoring_points', ''),
                         })
-            else:
-                # Fall back to parquet when JSON annotations are absent (e.g. test split)
+            if not self.data_list:
+                # Fall back to parquet when JSON annotations are absent or empty
                 parquet_files = sorted(
                     glob.glob(os.path.join(pth, 'mlvu_test', '*.parquet')) +
                     glob.glob(os.path.join(pth, 'mlvu_dev', '*.parquet'))
@@ -420,16 +434,21 @@ class MLVU_OpenEnded(VideoBaseDataset):
                     )
                 df = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
                 task_to_prefix = {k: v[1] for k, v in self.type_data_list.items()}
-                oe_tasks = set(task_to_prefix.keys())
-                if 'task_type' in df.columns:
-                    df = df[df['task_type'].isin(oe_tasks)]
+                # Do not filter by task_type: test-split parquet may use different names
                 for _, row in df.iterrows():
                     task_type = str(row.get('task_type', ''))
-                    prefix = task_to_prefix.get(task_type, f'./MLVU/video/{task_type}')
-                    video = row.get('video', row.get('video_uid', row.get('video_id', '')))
+                    video = row.get('video', row.get('video_name',
+                            row.get('video_uid', row.get('video_id', ''))))
                     if pd.isna(video) or not str(video).strip():
                         continue
                     video = str(video)
+                    expected_prefix = task_to_prefix.get(task_type, f'./MLVU/video/{task_type}')
+                    if osp.exists(osp.join(pth, expected_prefix, video)):
+                        prefix = expected_prefix
+                    elif osp.exists(osp.join(pth, video)):
+                        prefix = '.'
+                    else:
+                        prefix = expected_prefix
                     self.data_list.append({
                         'task_type': task_type,
                         'prefix': str(prefix),
